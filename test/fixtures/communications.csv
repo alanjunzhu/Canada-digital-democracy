@@ -1,0 +1,6 @@
+COMLOG_ID,REG_ID_ENR,COMM_DATE,POSTED_DATE,INSTITUTION_EN,SUBJECT_MATTER_EN,CLIENT_ORG_CORP_NM_EN,REGISTRANT_NM
+C1,R1,2026-02-10,2026-03-14,House of Commons,"Amendments to Bill C-14, environmental assessment",Northern Pipelines Inc.,"Doe, Consultant"
+C2,R1,2026-02-18,2026-03-14,House of Commons,"Bill C-14 consultations",Northern Pipelines Inc.,"Doe, Consultant"
+C3,R2,2026-01-05,2026-02-11,Finance Canada (FIN),"Taxation and Finance",Bay Street Assoc.,"Roe, Consultant"
+C4,R3,2023-06-02,2023-07-15,House of Commons,"Bill C-14 predecessor",Legacy Corp,"Old, Consultant"
+C5,R2,2026-02-20,2026-03-02,House of Commons,"Taxation and Finance",Bay Street Assoc.,"Roe, Consultant"

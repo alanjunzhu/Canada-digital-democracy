@@ -1,0 +1,17 @@
+{
+  "name": "lobby-to-law",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Joining Canada's lobbying communication reports to federal legislation.",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "probe": "node src/cli.mjs probe",
+    "fetch:members": "node src/cli.mjs fetch-members",
+    "fetch:bills": "node src/cli.mjs fetch-bills",
+    "ingest:lobbying": "node src/cli.mjs ingest-lobbying",
+    "resolve": "node src/cli.mjs resolve",
+    "timeline": "node src/cli.mjs timeline",
+    "test": "node --test test/*.test.mjs"
+  }
+}
