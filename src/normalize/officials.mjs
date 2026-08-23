@@ -82,10 +82,19 @@ function stripLeadingPersonTitle(seg) {
   return rest ? { title: seg.slice(0, m[0].length).trim(), rest } : null;
 }
 
-export function parseDpoh(raw, institutionHint = '') {
+/**
+ * @param raw              the DPOH name cell
+ * @param institutionHint  the institution column, if present
+ * @param titleHint        the DPOH title column. The OCL files carry the title
+ *                         SEPARATELY from the name, so a row reading just
+ *                         'Thériault, Jean-Yves' is only classifiable as an MP
+ *                         once this is supplied. Omitting it silently
+ *                         collapses every role to 'unknown'.
+ */
+export function parseDpoh(raw, institutionHint = '', titleHint = '') {
   const text = String(raw || '').trim().replace(/\s+/g, ' ');
   if (!text) {
-    return { raw: text, kind: 'role_only', given: '', surname: '', role: '', roleClass: 'unknown', institution: institutionHint };
+    return { raw: text, kind: 'role_only', given: '', surname: '', role: String(titleHint || ''), roleClass: classifyRole(`${titleHint} ${institutionHint}`), institution: institutionHint };
   }
 
   // 'Doe, Jane, Minister of X' — comma-order names occupy the first TWO
@@ -114,7 +123,8 @@ export function parseDpoh(raw, institutionHint = '') {
     roleSegs = segs;                        // pure role, no person named
   }
 
-  const role = [...leadTitle, ...roleSegs].join(', ');
+  const role = [...leadTitle, ...roleSegs, ...(titleHint ? [String(titleHint)] : [])]
+    .filter(Boolean).join(', ');
   const institution = institutionHint || roleSegs[roleSegs.length - 1] || '';
   const roleClass = classifyRole(`${role} ${institution}`);
 

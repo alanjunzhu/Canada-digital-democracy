@@ -6,6 +6,7 @@ import { fetchMembers } from './fetch/fetch-members.mjs';
 import { fetchBills } from './fetch/fetch-bills.mjs';
 import { buildPersonIndex, resolveDpoh, summarize } from './match/resolve.mjs';
 import { buildBillTimeline } from './match/timeline.mjs';
+import { dpohComposition, citationRate, filingLag, dpohRowShape } from './match/stats.mjs';
 
 const args = process.argv.slice(2);
 const cmd = args[0];
@@ -63,7 +64,7 @@ switch (cmd) {
     const { rows: dpohRows } = await ingestCsv(dpohPath, DPOH_COLUMNS);
 
     const results = dpohRows.map((r) =>
-      resolveDpoh(r.dpoh_raw, dateById.get(r.communication_id) || null, index, { institution: r.institution || '', overrides }));
+      resolveDpoh(r.dpoh_raw, dateById.get(r.communication_id) || null, index, { institution: r.institution || '', title: r.dpoh_title_raw || '', overrides }));
 
     const report = summarize(results);
     await write('resolution-report.json', report);
@@ -71,6 +72,52 @@ switch (cmd) {
       dpoh_raw: r.dpoh_raw, status: r.status, method: r.method, confidence: r.confidence, person_id: r.person_id,
     })));
     console.table([{ total: report.total, resolved: report.resolved, ambiguous: report.ambiguous, unresolved: report.unresolved, not_a_person: report.not_a_person, pct_named: report.pct_resolved_of_named_persons }]);
+    break;
+  }
+  case 'stats': {
+    // Answers the four questions in NOTES.md in one pass. Run this FIRST on
+    // real data — the numbers decide what is worth building.
+    const commsPath = flag('comms', 'data/raw/communications.csv');
+    const dpohPath = flag('dpoh', 'data/raw/communication_dpoh.csv');
+
+    const { rows: commRows } = await ingestCsv(commsPath, COMMUNICATION_COLUMNS);
+    const { rows: dpohRows } = await ingestCsv(dpohPath, DPOH_COLUMNS);
+    for (const r of commRows) {
+      r.comm_date = isoDate(r.comm_date);
+      r.posted_date = isoDate(r.posted_date);
+    }
+
+    const report = {
+      generated_at: new Date().toISOString().slice(0, 10),
+      source_files: { communications: commsPath, dpoh: dpohPath },
+      q1_who_is_named: dpohComposition(dpohRows),
+      q2_citation_rate: citationRate(commRows, 'subject_raw'),
+      q3_filing_lag: filingLag(commRows),
+      q4_row_shape: dpohRowShape(dpohRows),
+    };
+    await write('ratio-report.json', report);
+
+    const q1 = report.q1_who_is_named;
+    const q2 = report.q2_citation_rate;
+    const q3 = report.q3_filing_lag;
+    console.log(`
+Q1  Who is named on ${q1.total_dpoh_rows.toLocaleString()} DPOH rows?
+      names a person            ${q1.pct_naming_a_person}%
+      names a sitting member    ${q1.pct_naming_a_sitting_member}%   <- caps how member-centric the product can be
+      role only (no person)     ${q1.role_only.toLocaleString()} rows
+    top classes: ${Object.entries(q1.breakdown).slice(0, 5).map(([k, n]) => `${k}=${n}`).join('  ')}
+
+Q2  Explicit bill citations in ${q2.rows_examined.toLocaleString()} communications
+      cite a bill number        ${q2.pct_with_citation}%   <- below ~5% means the citation join is thin
+      distinct bills cited      ${q2.distinct_bills_cited}
+
+Q3  Filing lag (meeting -> public)
+      median ${q3.median_days} days | p75 ${q3.p75_days} | p90 ${q3.p90_days} | max ${q3.max_days}
+
+Q4  DPOH row shape
+      ${report.q4_row_shape.mean_dpoh_rows_per_communication} rows per communication (max ${report.q4_row_shape.max_dpoh_rows_per_communication})
+      ${report.q4_row_shape.verdict}
+`);
     break;
   }
   case 'timeline': {
@@ -91,6 +138,7 @@ switch (cmd) {
   npm run probe            -- --comms <csv> --dpoh <csv>   inspect real headers vs expected
   npm run fetch:members    -- --parliament 45
   npm run fetch:bills      -- --session 45-1
+  npm run stats            -- --comms <csv> --dpoh <csv>   the four questions in NOTES.md
   npm run resolve          -- --dpoh <csv> --comms <csv>   entity resolution + coverage report
   npm run timeline         -- --bills <json> --links <json>
 Sessions configured: ${SESSIONS.map((s) => `${s.parliament}-${s.session}`).join(', ')}`);

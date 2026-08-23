@@ -32,7 +32,27 @@ not known yet, and each one changes the product.
    `ingestCsv` needs a splitter before resolution, and the coverage numbers from
    `npm run resolve` will be wrong until it does.
 
-Run `npm run probe` against the downloaded bulk files before trusting anything.
+All four are answered in one pass by:
+
+```bash
+npm run stats -- --comms data/raw/communications.csv --dpoh data/raw/communication_dpoh.csv
+```
+
+which prints them and writes `data/out/ratio-report.json`. Run `npm run probe`
+first, though — if the column mapping is wrong, `stats` will refuse to run
+rather than report confident numbers off the wrong columns.
+
+Rough decision thresholds, set in advance so the numbers are not rationalized
+after the fact:
+
+- **Q1 under ~40% naming a sitting member** — the product is about ministers'
+  offices, not MPs, and `office_holding` becomes the next thing to build.
+- **Q2 under ~5% citing a bill** — the citation join is too thin to carry the
+  timeline; either drop the per-bill framing or accept the weaker category join
+  and label it as context on the page.
+- **Q3 median under ~10 days** — drop the "public found out later" angle.
+- **Q4 flagged as packed** — stop and write the splitter; every other number
+  above is wrong until then.
 
 ## Not yet built
 

@@ -44,6 +44,7 @@ happened while nobody could see it.
 | Temporal resolution (match against who held the seat *on the date*) | **verified** against fixtures |
 | Bill citation extraction + session scoping | **verified** |
 | Timeline / pre-stage windows | **verified** |
+| Four-question stats report (`npm run stats`) | **verified** against fixtures |
 | **OCL bulk CSV column names** | **UNVERIFIED** — see below |
 | LEGISinfo + ourcommons XML field names | **partly unverified** — parsers are tolerant, confirm on first run |
 
@@ -65,6 +66,9 @@ npm run probe -- --comms data/raw/communications.csv --dpoh data/raw/communicati
 spellings to the alias lists, then:
 
 ```bash
+# The four questions in NOTES.md, in one pass. Run this BEFORE building anything.
+npm run stats -- --comms data/raw/communications.csv --dpoh data/raw/communication_dpoh.csv
+
 npm run fetch:members -- --parliament 45
 npm run fetch:bills   -- --session 45-1
 npm run resolve       -- --dpoh data/raw/communication_dpoh.csv --comms data/raw/communications.csv

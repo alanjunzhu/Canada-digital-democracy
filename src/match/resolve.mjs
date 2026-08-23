@@ -53,11 +53,11 @@ function scoreCandidate(parsed, term) {
  * @param {string} dpohRaw   verbatim DPOH string from the filing
  * @param {string} commDate  ISO date of the communication
  * @param {Map} index        from buildPersonIndex
- * @param {object} opts      { institution, overrides }
+ * @param {object} opts      { institution, title, overrides }
  */
 export function resolveDpoh(dpohRaw, commDate, index, opts = {}) {
-  const { institution = '', overrides = {} } = opts;
-  const parsed = parseDpoh(dpohRaw, institution);
+  const { institution = '', title = '', overrides = {} } = opts;
+  const parsed = parseDpoh(dpohRaw, institution, title);
 
   const base = { dpoh_raw: dpohRaw, parsed, person_id: null, candidate_count: 0 };
 

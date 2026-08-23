@@ -38,3 +38,16 @@ test('surname, given order is not mistaken for name + role', () => {
   assert.equal(p.given, 'Jane');
   assert.equal(p.surname, 'Doe');
 });
+
+test('the separate title column is honoured when the name cell has no role', () => {
+  // Regression: the OCL files carry DPOH_TITLE_EN in its own column. Ignoring
+  // it collapsed every role to 'unknown' and reported 0% sitting members.
+  assert.equal(parseDpoh('Thériault, Jean-Yves', 'House of Commons', 'Member of Parliament').roleClass, 'mp');
+  assert.equal(parseDpoh('Doe, Jane', 'Finance Canada (FIN)', 'Chief of Staff').roleClass, 'staff');
+});
+
+test('a title column on an empty name cell still classifies the role', () => {
+  const p = parseDpoh('', 'Finance Canada (FIN)', 'Deputy Minister');
+  assert.equal(p.kind, 'role_only');
+  assert.equal(p.roleClass, 'staff');
+});
