@@ -1,0 +1,13 @@
+{
+  "persons": [],
+  "terms": [
+    {"mp_term_id":"t1","person_id":"p-theriault","given_name":"Jean-Yves","surname":"Thériault","riding":"Montcalm","caucus":"Bloc","parliament":45,"start_date":"2025-05-26","end_date":null},
+    {"mp_term_id":"t2","person_id":"p-gill-a","given_name":"Marilène","surname":"Gill","riding":"Manicouagan","caucus":"Bloc","parliament":45,"start_date":"2025-05-26","end_date":null},
+    {"mp_term_id":"t3","person_id":"p-gill-b","given_name":"Parm","surname":"Gill","riding":"Milton","caucus":"CPC","parliament":45,"start_date":"2025-05-26","end_date":null},
+    {"mp_term_id":"t4","person_id":"p-vankoeverden","given_name":"Adam","surname":"van Koeverden","riding":"Burlington North","caucus":"LPC","parliament":45,"start_date":"2025-05-26","end_date":null},
+    {"mp_term_id":"t5","person_id":"p-oconnell","given_name":"Jennifer","surname":"O'Connell","riding":"Pickering","caucus":"LPC","parliament":45,"start_date":"2025-05-26","end_date":null},
+    {"mp_term_id":"t6","person_id":"p-smith-robert","given_name":"Robert","surname":"Smith","riding":"Kenora","caucus":"CPC","parliament":45,"start_date":"2025-05-26","end_date":null},
+    {"mp_term_id":"t7","person_id":"p-blanchette","given_name":"Maxime","surname":"Blanchette-Joncas","riding":"Rimouski","caucus":"Bloc","parliament":45,"start_date":"2025-05-26","end_date":null},
+    {"mp_term_id":"t8","person_id":"p-former","given_name":"Helena","surname":"Tremblay","riding":"Laval","caucus":"LPC","parliament":44,"start_date":"2021-11-22","end_date":"2025-03-23"}
+  ]
+}

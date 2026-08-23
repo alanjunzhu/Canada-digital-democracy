@@ -1,0 +1,5 @@
+node_modules/
+data/raw/
+data/out/
+*.zip
+.DS_Store
