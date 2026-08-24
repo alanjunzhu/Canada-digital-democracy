@@ -1,0 +1,30 @@
+{
+  "_readme": [
+    "Ministerial, parliamentary-secretary and deputy-minister appointments, with dates.",
+    "This file is HAND-CURATED on purpose. The Privy Council Office publishes ministry",
+    "lists and appointment Orders in Council, but not as a bulk file this pipeline can",
+    "fetch, and inventing appointment dates would silently corrupt every attribution",
+    "downstream. An empty roster is a supported state: role rows then report",
+    "'unmatched' and nothing is claimed about them.",
+    "",
+    "Add one object per person per portfolio per interval:",
+    "  { \"title\": \"Minister of Finance\", \"person_id\": \"<person_id from members-NN.json>\",",
+    "    \"institution\": \"Department of Finance Canada\",",
+    "    \"start_date\": \"YYYY-MM-DD\", \"end_date\": null }",
+    "",
+    "end_date null means 'still in post'. Overlapping intervals for the same office are",
+    "reported by `npm run offices` and make every communication in the overlap ambiguous.",
+    "person_id must match a person in data/out/members-NN.json, or the holding names a",
+    "chair with nobody in it.",
+    "",
+    "'aliases' maps a portfolio phrase (French, or a renamed portfolio) onto a canonical",
+    "key, e.g. \"ministre des ressources naturelles\": \"minister of natural resources\".",
+    "Built-in aliases live in src/normalize/roles.mjs; add here what is specific to your",
+    "data rather than editing code.",
+    "",
+    "Sources to transcribe from: PCO ministry list (canada.ca/en/privy-council), and the",
+    "Orders in Council search at orders-in-council.canada.ca for exact appointment dates."
+  ],
+  "aliases": {},
+  "holdings": []
+}

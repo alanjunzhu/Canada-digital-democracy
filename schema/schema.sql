@@ -42,9 +42,11 @@ CREATE TABLE office_holding (
   title       TEXT NOT NULL,           -- 'Minister of Finance'
   institution TEXT,                    -- 'Department of Finance Canada'
   is_staff    INTEGER NOT NULL DEFAULT 0,
+  office_key  TEXT,                    -- canonical key from normalize/roles.mjs, e.g. 'minister of finance'
   start_date  TEXT NOT NULL,
   end_date    TEXT
 );
+CREATE INDEX idx_office_holding_key ON office_holding(office_key, start_date, end_date);
 
 -- ------------------------------------------------------------- lobbying ----
 
@@ -94,7 +96,15 @@ CREATE TABLE dpoh_link (
   person_id        TEXT REFERENCES person(person_id),
   holding_id       TEXT REFERENCES office_holding(holding_id),
   status           TEXT NOT NULL,      -- resolved | ambiguous | unresolved | not_a_person
-  method           TEXT,               -- exact | nickname | initial | override | role
+                                       -- | office           (the chair is known, the individual is not)
+                                       -- | ambiguous_office (more than one holding covers the date)
+  method           TEXT,               -- exact | nickname | initial | override
+                                       -- | office-principal | office-staff | office-parl_sec | office-deputy
+  office_key       TEXT,               -- canonical portfolio key the role text resolved to
+  principal_person_id TEXT REFERENCES person(person_id),
+                                       -- who held the office. Set for staff rows too, where
+                                       -- person_id stays NULL: a chief of staff is NOT the
+                                       -- minister, and the two must never be collapsed.
   confidence       REAL,
   candidate_count  INTEGER,
   PRIMARY KEY (communication_id, dpoh_raw)

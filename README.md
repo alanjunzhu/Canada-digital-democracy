@@ -44,6 +44,9 @@ happened while nobody could see it.
 | Temporal resolution (match against who held the seat *on the date*) | **verified** against fixtures |
 | Bill citation extraction + session scoping | **verified** |
 | Timeline / pre-stage windows | **verified** |
+| Office keys from role strings (EN/FR, staff vs. principal vs. parl. sec.) | **verified**, 8 unit tests |
+| Office resolution (which chair, held by whom, on the date) | **verified** against fixtures |
+| **The office roster itself** (`data/overrides/office-holders.json`) | **empty** — hand-curated, see below |
 | Four-question stats report (`npm run stats`) | **verified** against fixtures |
 | **OCL bulk CSV column names** | **UNVERIFIED** — see below |
 | LEGISinfo + ourcommons XML field names | **partly unverified** — parsers are tolerant, confirm on first run |
@@ -74,6 +77,13 @@ npm run fetch:bills   -- --session 45-1
 npm run resolve       -- --dpoh data/raw/communication_dpoh.csv --comms data/raw/communications.csv
 ```
 
+`resolve` also reads the ministerial roster at `data/overrides/office-holders.json`,
+which ships empty. Validate it any time with:
+
+```bash
+npm run offices        # prints every office, its intervals, and any overlap or bad date
+```
+
 `resolve` writes `data/out/resolution-report.json`, which is the tractability
 answer: percent resolved, percent ambiguous, and the 25 most frequent strings
 that failed. **Read the failures before building any UI.** If a handful of
@@ -94,7 +104,13 @@ unique tail, the join needs more than name matching.
    communication's date, or it is not a citation.
 4. **Raw evidence is immutable.** `dpoh_raw` is stored verbatim forever;
    resolver output lives in a separate table so it can be recomputed and diffed.
-5. **A logged meeting is not wrongdoing.** Lobbying is legal and registration is
+5. **A staff meeting is not a minister's meeting.** A row naming 'Chief of
+   Staff, Office of the Minister of Finance' resolves to the *office*: the
+   individual stays unnamed (`person_id` null) and the minister is recorded
+   separately as `principal_person_id`. 'The minister's office met the
+   registrant' and 'the minister met the registrant' are different facts, and
+   the pipeline never collapses the first into the second.
+6. **A logged meeting is not wrongdoing.** Lobbying is legal and registration is
    the system working. The product shows access and timing; it does not imply a
    finding. Any UI built on this must say so on the page.
 

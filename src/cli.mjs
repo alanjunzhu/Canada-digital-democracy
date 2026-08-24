@@ -5,6 +5,7 @@ import { probeColumns, ingestCsv, isoDate } from './fetch/ingest-lobbying.mjs';
 import { fetchMembers } from './fetch/fetch-members.mjs';
 import { fetchBills } from './fetch/fetch-bills.mjs';
 import { buildPersonIndex, resolveDpoh, summarize } from './match/resolve.mjs';
+import { validateHoldings, buildOfficeIndex, summarizeOffices, EMPTY_OFFICE_INDEX } from './match/office.mjs';
 import { buildBillTimeline } from './match/timeline.mjs';
 import { dpohComposition, citationRate, filingLag, dpohRowShape } from './match/stats.mjs';
 
@@ -15,6 +16,21 @@ const flag = (name, def = null) => {
   return i >= 0 ? args[i + 1] : def;
 };
 const OUT = 'data/out';
+const OFFICE_ROSTER = 'data/overrides/office-holders.json';
+
+// Loads the hand-curated office roster. A missing or empty file is a supported
+// state: role rows then report 'unmatched' and nothing is claimed about them.
+async function loadOffices(path = OFFICE_ROSTER, { strict = false } = {}) {
+  let raw;
+  try {
+    raw = JSON.parse(await readFile(path, 'utf8'));
+  } catch (e) {
+    if (strict) throw e;
+    return { index: EMPTY_OFFICE_INDEX, errors: [], overlaps: [], holdings: [] };
+  }
+  const { holdings, errors, overlaps } = validateHoldings(raw.holdings || [], raw.aliases || {});
+  return { index: buildOfficeIndex(holdings, raw.aliases || {}), holdings, errors, overlaps };
+}
 const write = async (name, obj) => {
   await mkdir(OUT, { recursive: true });
   await writeFile(`${OUT}/${name}`, JSON.stringify(obj, null, 2));
@@ -58,20 +74,65 @@ switch (cmd) {
     const { terms } = JSON.parse(await readFile(membersPath, 'utf8'));
     const overrides = JSON.parse(await readFile('data/overrides/dpoh-aliases.json', 'utf8')).aliases || {};
     const index = buildPersonIndex(terms);
+    const { index: offices, errors: officeErrors, overlaps } = await loadOffices(flag('roster', OFFICE_ROSTER));
+    for (const e of [...officeErrors, ...overlaps]) console.log(`office roster: ${e}`);
 
     const { rows: commRows } = await ingestCsv(commsPath, COMMUNICATION_COLUMNS);
     const dateById = new Map(commRows.map((r) => [r.communication_id, isoDate(r.comm_date)]));
     const { rows: dpohRows } = await ingestCsv(dpohPath, DPOH_COLUMNS);
 
     const results = dpohRows.map((r) =>
-      resolveDpoh(r.dpoh_raw, dateById.get(r.communication_id) || null, index, { institution: r.institution || '', title: r.dpoh_title_raw || '', overrides }));
+      resolveDpoh(r.dpoh_raw, dateById.get(r.communication_id) || null, index, { institution: r.institution || '', title: r.dpoh_title_raw || '', overrides, offices }));
 
     const report = summarize(results);
+    // Offices get their own coverage report: 'which chairs did we fail to
+    // recognize' is a different question from 'which people did we fail to
+    // identify', and the fix for each is different (an alias vs. a roster row).
+    report.offices = summarizeOffices(results
+      .filter((r) => r.parsed.kind === 'role_only' || r.office_key)
+      .map((r) => ({
+        status: r.status === 'office' ? 'office'
+          : r.status === 'ambiguous_office' ? 'ambiguous'
+            : r.holding_id ? 'resolved' : 'unmatched',
+        office_key: r.office_key || '',
+      })));
     await write('resolution-report.json', report);
     await write('dpoh-links.json', results.map((r) => ({
-      dpoh_raw: r.dpoh_raw, status: r.status, method: r.method, confidence: r.confidence, person_id: r.person_id,
+      dpoh_raw: r.dpoh_raw, status: r.status, method: r.method, confidence: r.confidence,
+      person_id: r.person_id, holding_id: r.holding_id ?? null, office_key: r.office_key ?? null,
+      principal_person_id: r.principal_person_id ?? null,
     })));
-    console.table([{ total: report.total, resolved: report.resolved, ambiguous: report.ambiguous, unresolved: report.unresolved, not_a_person: report.not_a_person, pct_named: report.pct_resolved_of_named_persons }]);
+    console.table([{ total: report.total, resolved: report.resolved, ambiguous: report.ambiguous, unresolved: report.unresolved, not_a_person: report.not_a_person, office: report.office, pct_named: report.pct_resolved_of_named_persons, pct_attributed: report.pct_attributed }]);
+    if (report.offices.total) {
+      console.log(`
+Office attribution: ${report.offices.pct_attributed_to_an_office}% of ${report.offices.total} role rows land on a chair.
+Top unmatched office keys (add an alias or a roster row for each):`);
+      for (const { key, n } of report.offices.top_unmatched_office_keys.slice(0, 10)) console.log(`   ${String(n).padStart(6)}  ${key}`);
+    }
+    break;
+  }
+  case 'offices': {
+    // Validates the roster BEFORE it is used to attribute anything. A roster
+    // with overlapping intervals silently turns real access into 'ambiguous',
+    // so it is checked loudly and early.
+    const path = flag('roster', OFFICE_ROSTER);
+    const { index, holdings, errors, overlaps } = await loadOffices(path, { strict: true });
+    console.log(`\n== office roster (${path}): ${holdings.length} holdings, ${index.byKey.size} distinct offices`);
+    for (const e of errors) console.log(`   ERROR   ${e}`);
+    for (const o of overlaps) console.log(`   OVERLAP ${o}`);
+    if (!holdings.length) {
+      console.log(`   roster is empty — role rows will report 'unmatched' and nothing will be attributed.
+   See the _readme in ${path} for what to transcribe and from where.`);
+    }
+    const unfilled = holdings.filter((h) => !h.person_id);
+    if (unfilled.length) console.log(`   ${unfilled.length} holding(s) name a chair with no person_id — those resolve to the office only.`);
+    for (const [key, hs] of [...index.byKey].sort()) {
+      console.log(`   ${key}`);
+      for (const h of hs.sort((a, b) => a.start_date.localeCompare(b.start_date))) {
+        console.log(`      ${h.start_date} .. ${h.end_date || 'open'}  ${h.person_id || '(no person recorded)'}`);
+      }
+    }
+    if (errors.length) process.exitCode = 1;
     break;
   }
   case 'stats': {
@@ -139,6 +200,7 @@ Q4  DPOH row shape
   npm run fetch:members    -- --parliament 45
   npm run fetch:bills      -- --session 45-1
   npm run stats            -- --comms <csv> --dpoh <csv>   the four questions in NOTES.md
+  npm run offices          -- [--roster <json>]             validate the ministerial roster
   npm run resolve          -- --dpoh <csv> --comms <csv>   entity resolution + coverage report
   npm run timeline         -- --bills <json> --links <json>
 Sessions configured: ${SESSIONS.map((s) => `${s.parliament}-${s.session}`).join(', ')}`);
