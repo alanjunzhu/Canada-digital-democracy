@@ -57,6 +57,29 @@ export async function fetchText(url, { cachePath, retries = 4, ttlMs = 6 * 3600e
 // headers, and the same URL through the system's curl is a different client,
 // not a disguise: same identifying UA, same public file. If curl is refused
 // too, the block is on the file and the run says so rather than escalating.
+export async function probeTransports(url) {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const run = promisify(execFile);
+  const results = [];
+  try {
+    const res = await fetch(url, { method: 'HEAD', headers: HEADERS });
+    results.push({ transport: 'node-fetch', status: res.status });
+  } catch (e) { results.push({ transport: 'node-fetch', error: e.message }); }
+  for (const [transport, args] of [
+    ['curl', ['-sS', '-o', '/dev/null', '-w', '%{http_code}', '--max-time', '30', '-A', HEADERS['User-Agent'], url]],
+    ['curl-default-ua', ['-sS', '-o', '/dev/null', '-w', '%{http_code}', '--max-time', '30', url]],
+    ['wget', ['-S', '--spider', '--timeout=30', '-U', HEADERS['User-Agent'], url]],
+  ]) {
+    try {
+      const { stdout, stderr } = await run(transport.split('-')[0], args, { maxBuffer: 1 << 20 });
+      const out = `${stdout}${stderr}`.trim().split('\n').filter((l) => /HTTP|^\d{3}$/.test(l)).slice(-1)[0] || stdout.trim();
+      results.push({ transport, status: out });
+    } catch (e) { results.push({ transport, error: String(e.message).split('\n').slice(-2).join(' ').trim() }); }
+  }
+  return results;
+}
+
 async function curlToFile(url, path) {
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');

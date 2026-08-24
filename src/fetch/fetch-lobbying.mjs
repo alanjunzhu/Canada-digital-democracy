@@ -14,7 +14,7 @@
 
 import { COMMUNICATION_COLUMNS, DPOH_COLUMNS } from '../config/sources.mjs';
 import { parseCsvRecords, mapColumns } from '../lib/csv.mjs';
-import { fetchText, fetchToFile } from '../lib/http.mjs';
+import { fetchText, fetchToFile, probeTransports } from '../lib/http.mjs';
 
 const CKAN_PACKAGE = 'a34eb330-7136-4f5e-9f5f-3ba41df58b06';   // Monthly Communication Reports
 export const ckanUrl = (id = CKAN_PACKAGE) => `https://open.canada.ca/data/api/3/action/package_show?id=${id}`;
@@ -100,7 +100,15 @@ async function expand(path, dir) {
   return names.filter((n) => /\.csv$/i.test(n)).map((n) => `${dir}/${n}`);
 }
 
-export async function fetchLobbyingBulk({ dir = 'data/raw', packageId = CKAN_PACKAGE } = {}) {
+/**
+ * @param overrides  { communications?: url, dpoh?: url, dictionary?: url }
+ *   lobbycanada.gc.ca's edge refuses some clients outright. When it refuses the
+ *   runner, the file can be put somewhere the runner CAN reach — a release
+ *   asset on this repo is the obvious place — and named here (the workflow
+ *   passes OCL_ZIP_URL through). The catalogue stays the default so the
+ *   override does not quietly go stale.
+ */
+export async function fetchLobbyingBulk({ dir = 'data/raw', packageId = CKAN_PACKAGE, overrides = {} } = {}) {
   const pkg = JSON.parse(await fetchText(ckanUrl(packageId), { cachePath: `${dir}/ckan-package.json`, ttlMs: 3600e3 }));
   if (!pkg.success) throw new Error(`CKAN package_show failed for ${packageId}`);
   const picked = pickResources(pkg.result?.resources || []);
@@ -110,7 +118,7 @@ export async function fetchLobbyingBulk({ dir = 'data/raw', packageId = CKAN_PAC
   const downloaded = {};
   const failures = [];
   for (const key of ['communications', 'dpoh', 'dictionary']) {
-    const res = picked[key];
+    const res = overrides[key] ? { name: `override (${key})`, url: overrides[key] } : picked[key];
     if (!res) continue;
     const ext = /\.zip(\?|$)/i.test(res.url) ? 'zip' : /\.(xlsx?|ods)(\?|$)/i.test(res.url) ? 'xlsx' : 'csv';
     const target = `${dir}/${key}.${ext}`;
@@ -118,7 +126,13 @@ export async function fetchLobbyingBulk({ dir = 'data/raw', packageId = CKAN_PAC
       const got = await fetchToFile(res.url, target);
       downloaded[key] = { ...got, name: res.name, source_url: res.url, files: await expand(target, dir) };
     } catch (err) {
-      failures.push({ key, url: res.url, error: err.message, status: err.status ?? null });
+      // When a download is refused, record WHICH clients are refused. That is
+      // the difference between 'our request looked wrong' and 'this host does
+      // not serve runners', and only one of those is fixable in code.
+      failures.push({
+        key, url: res.url, error: err.message, status: err.status ?? null,
+        transports: await probeTransports(res.url).catch(() => []),
+      });
     }
   }
   // The zip's members are named by whoever packed it, so every extracted CSV

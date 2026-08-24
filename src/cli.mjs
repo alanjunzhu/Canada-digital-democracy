@@ -58,14 +58,20 @@ switch (cmd) {
     // Prints every resource the catalogue offers, so a wrong pick is visible
     // before any number is computed on the wrong file.
     const dir = flag('dir', 'data/raw');
-    const { picked, downloaded, failures, identified, contents, dataset_title, modified } = await fetchLobbyingBulk({ dir });
+    const overrides = {};
+    if (process.env.OCL_ZIP_URL) overrides.communications = process.env.OCL_ZIP_URL;
+    if (process.env.OCL_DICTIONARY_URL) overrides.dictionary = process.env.OCL_DICTIONARY_URL;
+    const { picked, downloaded, failures, identified, contents, dataset_title, modified } = await fetchLobbyingBulk({ dir, overrides });
     console.log(`\n== ${dataset_title || 'dataset'} (catalogue updated ${modified || 'unknown'})`);
     console.log('   resources offered:');
     for (const r of picked.all) console.log(`      [${String(r.format).padEnd(5)}] ${r.name}`);
     for (const [key, got] of Object.entries(downloaded)) {
       console.log(`   ${key}: ${got.name} -> ${got.files.join(', ') || got.path} (${(got.bytes / 1e6).toFixed(1)} MB)`);
     }
-    for (const f of failures) console.log(`   FAILED  ${f.key}: ${f.error}`);
+    for (const f of failures) {
+      console.log(`   FAILED  ${f.key}: ${f.error}`);
+      for (const t of f.transports || []) console.log(`             ${t.transport.padEnd(16)} ${t.status ?? t.error}`);
+    }
     if (contents.length) {
       console.log('   archive contents, identified by their headers:');
       for (const c of contents) console.log(`      ${c.kind || '(unrecognized)'}  ${c.file}\n         ${c.headers.join(' | ')}`);

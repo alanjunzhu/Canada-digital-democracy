@@ -36,6 +36,10 @@ jobs:
     env:
       PARLIAMENT: ${{ inputs.parliament || '45' }}
       SESSION: ${{ inputs.session || '45-1' }}
+      # Set this repository variable to a URL the runner can reach if
+      # lobbycanada.gc.ca refuses it (a release asset on this repo works).
+      OCL_ZIP_URL: ${{ vars.OCL_ZIP_URL }}
+      OCL_DICTIONARY_URL: ${{ vars.OCL_DICTIONARY_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -127,11 +131,25 @@ jobs:
       - name: Report a missing download
         if: always() && (steps.files.outputs.comms == '' || steps.files.outputs.dpoh == '')
         run: |
+          node -e "
+            const fs = require('fs');
+            let m = {};
+            try { m = JSON.parse(fs.readFileSync('data/out/download-manifest.json', 'utf8')); } catch {}
+            for (const f of m.failures || []) {
+              console.log(f.key + ': ' + f.error);
+              for (const t of f.transports || []) console.log('   ' + t.transport + ' -> ' + (t.status ?? t.error));
+            }
+          " | tee refused.log
           {
             echo '## No lobbying data this run'
             echo 'The OCL bulk files did not download, so the four questions and the'
-            echo 'resolution coverage were skipped. See the Sources section above for'
-            echo 'the resource list and the exact failure.'
+            echo 'resolution coverage were skipped. Which clients the host refused:'
+            echo '```'
+            cat refused.log
+            echo '```'
+            echo 'If every client is refused, the host is not serving CI runners.'
+            echo 'Put the zip somewhere the runner can reach (a release asset on this'
+            echo 'repo works) and set the repository variable OCL_ZIP_URL to it.'
           } >> "$GITHUB_STEP_SUMMARY"
           exit 1
 
