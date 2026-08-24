@@ -41,6 +41,18 @@ test('the CKAN package id is the stable handle, not a hash-pathed download link'
   assert.match(ckanUrl(), /open\.canada\.ca\/data\/api\/3\/action\/package_show\?id=a34eb330-/);
 });
 
+test('a file without COMLOG_ID is not a communications file, whatever it looks like', () => {
+  // The registrations download unpacks thirteen more CSVs beside these, and
+  // several of them have a 'Name' column. Gating on the communication key is
+  // what stops Registration_PublicOfficeExport being read as DPOH rows.
+  assert.equal(classifyCsvHeaders(['REG_ID_ENR', 'Name', 'TITLE']), null);
+  assert.equal(classifyCsvHeaders(['REG_ID_ENR', 'EFFECTIVE_DATE', 'CLIENT_ORG_CORP_NM_EN']), null);
+});
+
+test('the subject-details export is recognized as its own kind', () => {
+  assert.equal(classifyCsvHeaders(['COMLOG_ID', 'SUBJECT_CODE_OBJET', 'DESCRIPTION', 'NEED_REV_REQ']), 'subjects');
+});
+
 test('files inside the archive are identified by their headers, not their names', () => {
   // Verified live: the catalogue publishes ONE zip holding both files, so the
   // filename cannot be trusted to say which is which.

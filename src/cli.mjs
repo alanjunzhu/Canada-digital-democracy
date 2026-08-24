@@ -193,7 +193,14 @@ Top unmatched office keys (add an alias or a roster row for each):`);
     // Q2 prefers the per-communication subject-details export when it is
     // present: it is the file that actually carries the free text, and it ties
     // that text to a communication rather than to a registration.
-    const subjectsPath = flag('subjects', 'data/raw/communication_subject_details.csv');
+    const subjectsPath = flag('subjects', null) || (await (async () => {
+      // The download manifest already identified every extracted CSV; use its
+      // answer rather than a hard-coded filename.
+      try {
+        const m = JSON.parse(await readFile(`${OUT}/download-manifest.json`, 'utf8'));
+        return m.identified?.subjects || 'data/raw/communication_subject_details.csv';
+      } catch { return 'data/raw/communication_subject_details.csv'; }
+    })());
     let q2;
     try {
       const { rows: subjectRows } = await ingestCsv(subjectsPath, COMM_SUBJECT_DETAIL_COLUMNS);

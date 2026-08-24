@@ -12,7 +12,7 @@
 // printed so a wrong guess is visible immediately instead of silently
 // downloading the wrong file.
 
-import { COMMUNICATION_COLUMNS, DPOH_COLUMNS } from '../config/sources.mjs';
+import { COMMUNICATION_COLUMNS, DPOH_COLUMNS, COMM_SUBJECT_DETAIL_COLUMNS } from '../config/sources.mjs';
 import { parseCsvRecords, mapColumns, decodeCsv } from '../lib/csv.mjs';
 import { fetchText, fetchToFile, probeTransports } from '../lib/http.mjs';
 
@@ -56,23 +56,31 @@ export function pickResources(resources = []) {
 /**
  * Which file inside the archive is which.
  *
- * Verified live: the catalogue publishes ONE resource for this dataset — a zip
- * holding both the primary and the DPOH secondary file — so the two cannot be
- * told apart by resource name. They are identified by their headers instead,
- * which is the only property that actually distinguishes them, and which
- * doubles as a check that the column mapping still holds.
+ * The two OCL bulk downloads unpack to eighteen CSVs between them, sharing
+ * column names freely: several registration files also have a 'Name' column,
+ * and a registration primary file looks a lot like a communication primary
+ * file if you squint. So identification is gated on the COMMUNICATION key
+ * first — a file without COMLOG_ID is not a communications file, whatever else
+ * it looks like — and only then on what distinguishes the three:
  *
- * @returns 'dpoh' | 'communications' | null   (null = neither, e.g. a readme)
+ *   dpoh           COMLOG_ID + a public-office-holder name
+ *   communications COMLOG_ID + a communication date
+ *   subjects       COMLOG_ID + free-text subject details
+ *
+ * @returns 'dpoh' | 'communications' | 'subjects' | null
  */
 export function classifyCsvHeaders(headers) {
-  const score = (spec) => Object.keys(spec).length - mapColumns(headers, spec).missing.length;
-  const dpoh = mapColumns(headers, DPOH_COLUMNS);
   const comm = mapColumns(headers, COMMUNICATION_COLUMNS);
-  // A DPOH file is the one carrying a public-office-holder name column; nothing
-  // else in the dataset has one.
+  const dpoh = mapColumns(headers, DPOH_COLUMNS);
+  const subj = mapColumns(headers, COMM_SUBJECT_DETAIL_COLUMNS);
+
+  const hasCommId = Boolean(comm.mapping.communication_id || dpoh.mapping.communication_id || subj.mapping.communication_id);
+  if (!hasCommId) return null;                       // a registration file, or something else entirely
+
   if (dpoh.mapping.dpoh_raw) return 'dpoh';
-  if (comm.mapping.comm_date || score(COMMUNICATION_COLUMNS) >= 3) return 'communications';
-  return score(DPOH_COLUMNS) >= 3 ? 'dpoh' : null;
+  if (comm.mapping.comm_date) return 'communications';
+  if (subj.mapping.details) return 'subjects';
+  return null;
 }
 
 /** Reads just the header line of a CSV — these files are tens of megabytes. */
@@ -90,15 +98,23 @@ export async function sniffHeaders(path) {
   }
 }
 
-/** Unzips in place with the system `unzip`; CSVs are passed through untouched. */
+/**
+ * Unzips into a directory of the archive's own name; CSVs pass through
+ * untouched. Per-archive directories matter once there is more than one zip:
+ * the communications and registrations downloads both contain files called
+ * `Codes_SubjectMatterTypesExport.csv`, and flattening them would leave
+ * whichever unzipped last.
+ */
 async function expand(path, dir) {
   if (!/\.zip$/i.test(path)) return [path];
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
   const { readdir } = await import('node:fs/promises');
-  await promisify(execFile)('unzip', ['-o', '-q', path, '-d', dir]);
-  const names = await readdir(dir);
-  return names.filter((n) => /\.csv$/i.test(n)).map((n) => `${dir}/${n}`);
+  const base = path.split('/').pop().replace(/\.zip$/i, '');
+  const outDir = `${dir}/${base}`;
+  await promisify(execFile)('unzip', ['-o', '-q', path, '-d', outDir]);
+  const names = await readdir(outDir, { recursive: true });
+  return names.filter((n) => /\.csv$/i.test(n)).map((n) => `${outDir}/${n}`);
 }
 
 /**
