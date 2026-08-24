@@ -4,6 +4,7 @@ import { COMMUNICATION_COLUMNS, DPOH_COLUMNS, SESSIONS } from './config/sources.
 import { probeColumns, ingestCsv, isoDate } from './fetch/ingest-lobbying.mjs';
 import { fetchMembers } from './fetch/fetch-members.mjs';
 import { fetchBills } from './fetch/fetch-bills.mjs';
+import { fetchLobbyingBulk } from './fetch/fetch-lobbying.mjs';
 import { buildPersonIndex, resolveDpoh, summarize } from './match/resolve.mjs';
 import { validateHoldings, buildOfficeIndex, summarizeOffices, EMPTY_OFFICE_INDEX } from './match/office.mjs';
 import { buildBillTimeline } from './match/timeline.mjs';
@@ -50,6 +51,24 @@ switch (cmd) {
         console.log(r.missing.length ? `   MISSING: ${r.missing.join(', ')}` : '   all expected columns found');
       } catch (e) { console.log(`\n== ${label} (${path})\n   ${e.message}`); }
     }
+    break;
+  }
+  case 'fetch-lobbying': {
+    // Downloads the OCL bulk files through the Open Government catalogue.
+    // Prints every resource the catalogue offers, so a wrong pick is visible
+    // before any number is computed on the wrong file.
+    const dir = flag('dir', 'data/raw');
+    const { picked, downloaded, dataset_title, modified } = await fetchLobbyingBulk({ dir });
+    console.log(`\n== ${dataset_title || 'dataset'} (catalogue updated ${modified || 'unknown'})`);
+    console.log('   resources offered:');
+    for (const r of picked.all) console.log(`      [${String(r.format).padEnd(5)}] ${r.name}`);
+    for (const [key, got] of Object.entries(downloaded)) {
+      console.log(`   ${key}: ${got.name} -> ${got.files.join(', ') || got.path} (${(got.bytes / 1e6).toFixed(1)} MB)`);
+    }
+    for (const key of ['communications', 'dpoh']) {
+      if (!picked[key]) console.log(`   NOT FOUND: no resource matched '${key}'. Name it explicitly with --${key} <url>, or widen the pattern in src/fetch/fetch-lobbying.mjs.`);
+    }
+    await write('download-manifest.json', { dataset_title, modified, picked: picked.all, downloaded });
     break;
   }
   case 'fetch-members': {
@@ -197,6 +216,7 @@ Q4  DPOH row shape
   default:
     console.log(`lobby-to-law
   npm run probe            -- --comms <csv> --dpoh <csv>   inspect real headers vs expected
+  npm run fetch:lobbying                                    download the OCL bulk files (CI does this)
   npm run fetch:members    -- --parliament 45
   npm run fetch:bills      -- --session 45-1
   npm run stats            -- --comms <csv> --dpoh <csv>   the four questions in NOTES.md

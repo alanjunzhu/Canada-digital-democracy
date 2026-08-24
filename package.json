@@ -7,6 +7,7 @@
   "engines": { "node": ">=20" },
   "scripts": {
     "probe": "node src/cli.mjs probe",
+    "fetch:lobbying": "node src/cli.mjs fetch-lobbying",
     "fetch:members": "node src/cli.mjs fetch-members",
     "fetch:bills": "node src/cli.mjs fetch-bills",
     "stats": "node src/cli.mjs stats",

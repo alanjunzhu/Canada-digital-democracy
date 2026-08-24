@@ -1,0 +1,16 @@
+{
+  "_readme": "Synthetic CKAN package_show payload, shaped like open.canada.ca's. Names are plausible, not verified.",
+  "success": true,
+  "result": {
+    "title": "Monthly Communication Reports",
+    "metadata_modified": "2026-08-01T09:00:00.000000",
+    "resources": [
+      { "name": "Communication Report Data Dictionary", "format": "XLSX", "url": "https://example.invalid/dictionary.xlsx" },
+      { "name": "Monthly Communication Reports - Primary (FR)", "format": "CSV", "url": "https://example.invalid/Communications_fr.csv" },
+      { "name": "Monthly Communication Reports - Primary", "format": "CSV", "url": "https://example.invalid/Communications.csv" },
+      { "name": "Monthly Communication Reports - DPOH (secondary)", "format": "ZIP", "url": "https://example.invalid/Communication_DPOH.zip" },
+      { "name": "Registry of Lobbyists - Registrations", "format": "CSV", "url": "https://example.invalid/Registrations.csv" },
+      { "name": "Dataset landing page", "format": "HTML", "url": "https://example.invalid/landing" }
+    ]
+  }
+}

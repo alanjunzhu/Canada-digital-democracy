@@ -1,0 +1,150 @@
+# Runs the whole pipeline on GitHub's runners, against the live sources.
+#
+# This is the only place the pipeline has ever met real data. Development
+# happens in a sandbox with no egress to lobbycanada.gc.ca, open.canada.ca,
+# parl.ca or ourcommons.ca, so the four questions in NOTES.md — and the OCL
+# column names — can only be answered by a runner that can reach them.
+#
+# It is also the answer to 'where does this run': nowhere on anyone's laptop.
+# Trigger it by hand, or let the monthly schedule do it — the OCL republishes
+# the bulk files monthly, so anything more frequent just re-downloads the same
+# file.
+name: pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      parliament:
+        description: Parliament number for the member roster
+        default: '45'
+      session:
+        description: Parliament-session for bills, e.g. 45-1
+        default: '45-1'
+  schedule:
+    - cron: '17 9 5 * *'      # the 5th of each month, after the OCL publishes
+  push:
+    branches: ['claude/**']
+    paths: ['src/**', '.github/workflows/pipeline.yml', 'data/overrides/**']
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PARLIAMENT: ${{ inputs.parliament || '45' }}
+      SESSION: ${{ inputs.session || '45-1' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Fixture-verified logic first: if the resolver is broken there is no
+      # point spending ten minutes downloading to find out.
+      - name: Unit tests
+        run: npm test
+
+      - name: Validate the office roster
+        run: npm run offices 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # ---------------------------------------------------------------- data
+      - name: Download the OCL bulk files
+        id: download
+        run: |
+          set -o pipefail
+          npm run fetch:lobbying 2>&1 | tee download.log
+          {
+            echo '## Sources'
+            echo '```'
+            cat download.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Locate the downloaded CSVs
+        id: files
+        run: |
+          ls -la data/raw || true
+          comms=$(ls data/raw/*.csv 2>/dev/null | grep -iv dpoh | grep -i comm | head -1)
+          dpoh=$(ls data/raw/*.csv 2>/dev/null | grep -i dpoh | head -1)
+          # Fall back to the names `fetch:lobbying` writes when the archive
+          # members are named something else entirely.
+          [ -z "$comms" ] && comms=$(ls data/raw/communications.csv 2>/dev/null || true)
+          [ -z "$dpoh" ] && dpoh=$(ls data/raw/dpoh.csv 2>/dev/null || true)
+          echo "comms=$comms" >> "$GITHUB_OUTPUT"
+          echo "dpoh=$dpoh"   >> "$GITHUB_OUTPUT"
+          echo "using comms=$comms dpoh=$dpoh"
+
+      # THE step. Every unverified column name in src/config/sources.mjs is
+      # settled here, and the answer is printed whether it matches or not.
+      - name: Probe the real column headers
+        if: always()
+        run: |
+          set -o pipefail
+          npm run probe -- --comms "${{ steps.files.outputs.comms }}" --dpoh "${{ steps.files.outputs.dpoh }}" 2>&1 | tee probe.log
+          {
+            echo '## Real column headers vs. what the config expects'
+            echo '```'
+            cat probe.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ------------------------------------------------------- the questions
+      - name: The four questions
+        if: always()
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run stats -- --comms "${{ steps.files.outputs.comms }}" --dpoh "${{ steps.files.outputs.dpoh }}" 2>&1 | tee stats.log
+          {
+            echo '## The four open questions (NOTES.md)'
+            echo '```'
+            cat stats.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fetch members and bills
+        if: always()
+        continue-on-error: true
+        run: |
+          npm run fetch:members -- --parliament "$PARLIAMENT"
+          npm run fetch:bills   -- --session "$SESSION"
+
+      - name: Entity resolution coverage
+        if: always()
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run resolve -- --members "data/out/members-$PARLIAMENT.json" \
+            --comms "${{ steps.files.outputs.comms }}" --dpoh "${{ steps.files.outputs.dpoh }}" 2>&1 | tee resolve.log
+          {
+            echo '## Resolution coverage'
+            echo '```'
+            cat resolve.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Reports are small JSON; the raw bulk files are not kept.
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            data/out/*.json
+            *.log
+          if-no-files-found: warn
+          retention-days: 30
+
+      # The data dictionary is the artefact that settles the column question
+      # for good, so it is kept separately from the reports.
+      - name: Upload the OCL data dictionary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ocl-data-dictionary
+          path: data/raw/dictionary.*
+          if-no-files-found: ignore
+          retention-days: 30
