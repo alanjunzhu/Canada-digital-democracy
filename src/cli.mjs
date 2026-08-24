@@ -220,7 +220,6 @@ Top unmatched office keys (add an alias or a roster row for each):`);
     await write('ratio-report.json', report);
 
     const q1 = report.q1_who_is_named;
-    const q2 = report.q2_citation_rate;
     const q3 = report.q3_filing_lag;
     console.log(`
 Q1  Who is named on ${q1.total_dpoh_rows.toLocaleString()} DPOH rows?
