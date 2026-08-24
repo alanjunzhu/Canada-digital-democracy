@@ -66,11 +66,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p data/raw
-          if gh release download ocl-data --pattern '*.zip' --dir data/raw --clobber; then
-            echo "mirror: $(ls -la data/raw)"
-          else
-            echo "no 'ocl-data' release attached to this repo — see the README"
-          fi
+          gh release download ocl-data --pattern '*.zip' --dir data/raw --clobber 2>&1 | tee mirror.log || true
+          echo "--- data/raw after mirror ---" | tee -a mirror.log
+          ls -la data/raw 2>&1 | tee -a mirror.log
+          {
+            echo '## Mirror'
+            echo '```'
+            cat mirror.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Download the OCL bulk files
         id: download
@@ -157,6 +161,8 @@ jobs:
               for (const t of f.transports || []) console.log('   ' + t.transport + ' -> ' + (t.status ?? t.error));
             }
           " | tee refused.log
+          echo '--- data/raw tree ---' >> refused.log
+          ls -laR data/raw 2>&1 | head -60 >> refused.log
           {
             echo '## No lobbying data this run'
             echo 'The OCL bulk files did not download, so the four questions and the'
