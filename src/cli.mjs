@@ -94,10 +94,36 @@ switch (cmd) {
     break;
   }
   case 'fetch-members': {
-    const parliament = Number(flag('parliament', '45'));
-    const { persons, terms } = await fetchMembers(parliament);
-    await write(`members-${parliament}.json`, { persons, terms });
-    console.log(`${persons.length} persons, ${terms.length} terms`);
+    // The lobbying file spans 2008 to today, so resolving against one
+    // Parliament's roster leaves seventeen years of communications with nobody
+    // to match — they come back 'unresolved' and look like a matching failure
+    // when they are really a missing roster. Fetch every Parliament the data
+    // covers and let the temporal filter do its job.
+    const list = (flag('parliaments', null) || flag('parliament', '45'))
+      .split(/[,\s]+/).filter(Boolean).map(Number);
+
+    const persons = new Map();
+    const terms = [];
+    const seenRosters = new Map();
+    for (const parliament of list) {
+      const r = await fetchMembers(parliament);
+      await write(`members-${parliament}.json`, r);
+      console.log(`   parliament ${parliament}: ${r.persons.length} persons, ${r.terms.length} terms`);
+
+      // If two Parliaments come back with an identical roster, the endpoint is
+      // ignoring the parameter and every 'historical' answer would be today's
+      // House wearing a different date. Say so rather than publishing it.
+      const fingerprint = r.persons.map((p) => p.person_id).sort().join('|');
+      if (seenRosters.has(fingerprint)) {
+        console.log(`   WARNING: parliament ${parliament} returned the same roster as ${seenRosters.get(fingerprint)} — the source may be ignoring the parliament parameter.`);
+      } else {
+        seenRosters.set(fingerprint, parliament);
+      }
+      for (const p of r.persons) persons.set(p.person_id, p);
+      terms.push(...r.terms);
+    }
+    await write('members-all.json', { persons: [...persons.values()], terms });
+    console.log(`${persons.size} distinct persons, ${terms.length} terms across ${list.length} parliament(s)`);
     break;
   }
   case 'fetch-bills': {
@@ -117,7 +143,10 @@ switch (cmd) {
   }
   case 'resolve': {
     const identified = await identifiedFiles();
-    const membersPath = flag('members', 'data/out/members-45.json');
+    // Prefer the merged roster; a single-Parliament file only ever covers a
+    // slice of the lobbying record.
+    const membersPath = flag('members', null)
+      || (await readFile(`${OUT}/members-all.json`, 'utf8').then(() => `${OUT}/members-all.json`).catch(() => `${OUT}/members-45.json`));
     const dpohPath = flag('dpoh', null) || identified.dpoh || 'data/raw/communication_dpoh.csv';
     const commsPath = flag('comms', null) || identified.communications || 'data/raw/communications.csv';
 

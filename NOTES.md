@@ -142,6 +142,38 @@ not a parsing artefact — the export goes back to 2008.)
 1.53 DPOH rows per communication, max 99. The schema assumption holds, so every
 number above stands.
 
+## First resolution run, and why its number is a floor
+
+Resolving all 581,694 DPOH rows against the roster CI had loaded:
+
+| status | rows | |
+|---|---|---|
+| not_a_person | 372,539 | staff and senators — correct, not a failure |
+| unresolved | 186,504 | |
+| resolved | 22,294 | |
+| ambiguous | 357 | 0.06% — the never-guess rule almost never has to fire |
+
+`pct_resolved_of_named_persons` came out at **10.7%**, and that number is
+misleading in a specific, fixable way: the run had loaded **only the 45th
+Parliament's roster** (346 members, elected 2025) while the lobbying file goes
+back to **2008-07-02**. Seventeen years of communications had nobody to match
+against, so they came back `unresolved` — a missing roster reported as a
+matching failure. The temporal rule worked exactly as designed; it was fed one
+Parliament and asked about seven.
+
+`fetch:members` now takes `--parliaments 39,40,41,42,43,44,45`, merges them into
+`members-all.json`, and warns if two Parliaments return identical rosters —
+which would mean the source is ignoring the parameter and every historical
+answer is really today's House wearing a different date.
+
+Two things that are already worth noting from this run:
+
+- **357 ambiguous out of 581,694.** The rule that a shared surname must never
+  be guessed costs almost nothing in practice.
+- **`pct_attributed` 3.8%** is low for the same reason it was always going to
+  be: 372,539 staff rows have no office roster to attach to yet. That is the
+  single highest-value thing left to build, and Q1 is why.
+
 ## What the files themselves taught us
 
 - **The DPOH names are structured, not free text.** The export has

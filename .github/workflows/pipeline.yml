@@ -14,9 +14,9 @@ name: pipeline
 on:
   workflow_dispatch:
     inputs:
-      parliament:
-        description: Parliament number for the member roster
-        default: '45'
+      parliaments:
+        description: Parliaments to fetch rosters for (comma separated)
+        default: '39,40,41,42,43,44,45'
       session:
         description: Parliament-session for bills, e.g. 45-1
         default: '45-1'
@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      PARLIAMENT: ${{ inputs.parliament || '45' }}
+      PARLIAMENTS: ${{ inputs.parliaments || '39,40,41,42,43,44,45' }}
       SESSION: ${{ inputs.session || '45-1' }}
       # Set this repository variable to a URL the runner can reach if
       # lobbycanada.gc.ca refuses it (a release asset on this repo works).
@@ -139,7 +139,7 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          npm run fetch:members -- --parliament "$PARLIAMENT" 2>&1 | tee members.log
+          npm run fetch:members -- --parliaments "$PARLIAMENTS" 2>&1 | tee members.log
           npm run fetch:bills   -- --session "$SESSION"       2>&1 | tee bills.log
           {
             echo '## Parliament'
@@ -181,7 +181,7 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          npm run resolve -- --members "data/out/members-$PARLIAMENT.json" \
+          npm run resolve -- --members data/out/members-all.json \
             --comms "${{ steps.files.outputs.comms }}" --dpoh "${{ steps.files.outputs.dpoh }}" 2>&1 | tee resolve.log
           {
             echo '## Resolution coverage'
