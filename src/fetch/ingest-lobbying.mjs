@@ -6,12 +6,18 @@
 // shape before a single row is trusted.
 
 import { readFile } from 'node:fs/promises';
-import { parseCsvRecords, mapColumns } from '../lib/csv.mjs';
+import { parseCsvRecords, mapColumns, decodeCsv } from '../lib/csv.mjs';
+
+/** Reads a bulk CSV as bytes and decodes it as what it actually is. */
+export async function readCsvText(path) {
+  return decodeCsv(await readFile(path));
+}
 
 export async function probeColumns(path, spec) {
-  const { headers } = parseCsvRecords(await readFile(path, 'utf8'));
+  const { text, encoding } = await readCsvText(path);
+  const { headers } = parseCsvRecords(text);
   const { mapping, missing } = mapColumns(headers, spec);
-  return { path, headers, mapping, missing };
+  return { path, headers, mapping, missing, encoding };
 }
 
 /**
@@ -19,7 +25,7 @@ export async function probeColumns(path, spec) {
  *         of undefined values that looks like sparse data.
  */
 export async function ingestCsv(path, spec, { strict = true } = {}) {
-  const text = await readFile(path, 'utf8');
+  const { text, encoding } = await readCsvText(path);
   const { headers, records } = parseCsvRecords(text);
   const { mapping, missing } = mapColumns(headers, spec);
   if (missing.length && strict) {
@@ -35,7 +41,7 @@ export async function ingestCsv(path, spec, { strict = true } = {}) {
     for (const [key, header] of Object.entries(mapping)) o[key] = r[header] ?? null;
     return o;
   });
-  return { rows, mapping, missing, headers };
+  return { rows, mapping, missing, headers, encoding };
 }
 
 export const isoDate = (s) => {

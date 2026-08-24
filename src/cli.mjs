@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { COMMUNICATION_COLUMNS, DPOH_COLUMNS, SESSIONS } from './config/sources.mjs';
+import { COMMUNICATION_COLUMNS, DPOH_COLUMNS, COMM_SUBJECT_DETAIL_COLUMNS, SESSIONS } from './config/sources.mjs';
 import { probeColumns, ingestCsv, isoDate } from './fetch/ingest-lobbying.mjs';
 import { fetchMembers } from './fetch/fetch-members.mjs';
 import { fetchBills } from './fetch/fetch-bills.mjs';
@@ -8,7 +8,7 @@ import { fetchLobbyingBulk } from './fetch/fetch-lobbying.mjs';
 import { buildPersonIndex, resolveDpoh, summarize } from './match/resolve.mjs';
 import { validateHoldings, buildOfficeIndex, summarizeOffices, EMPTY_OFFICE_INDEX } from './match/office.mjs';
 import { buildBillTimeline } from './match/timeline.mjs';
-import { dpohComposition, citationRate, filingLag, dpohRowShape } from './match/stats.mjs';
+import { dpohComposition, citationRate, citationRateByCommunication, filingLag, dpohRowShape } from './match/stats.mjs';
 
 const args = process.argv.slice(2);
 const cmd = args[0];
@@ -48,6 +48,7 @@ switch (cmd) {
         console.log(`\n== ${label} (${path})`);
         console.log('   headers:', r.headers.join(' | '));
         console.log('   mapped :', JSON.stringify(r.mapping, null, 2).replace(/\n/g, '\n   '));
+        console.log(`   encoding: ${r.encoding}`);
         console.log(r.missing.length ? `   MISSING: ${r.missing.join(', ')}` : '   all expected columns found');
       } catch (e) { console.log(`\n== ${label} (${path})\n   ${e.message}`); }
     }
@@ -189,11 +190,23 @@ Top unmatched office keys (add an alias or a roster row for each):`);
       r.posted_date = isoDate(r.posted_date);
     }
 
+    // Q2 prefers the per-communication subject-details export when it is
+    // present: it is the file that actually carries the free text, and it ties
+    // that text to a communication rather than to a registration.
+    const subjectsPath = flag('subjects', 'data/raw/communication_subject_details.csv');
+    let q2;
+    try {
+      const { rows: subjectRows } = await ingestCsv(subjectsPath, COMM_SUBJECT_DETAIL_COLUMNS);
+      q2 = { source: subjectsPath, ...citationRateByCommunication(subjectRows) };
+    } catch {
+      q2 = { source: commsPath, ...citationRate(commRows, 'subject_raw') };
+    }
+
     const report = {
       generated_at: new Date().toISOString().slice(0, 10),
-      source_files: { communications: commsPath, dpoh: dpohPath },
+      source_files: { communications: commsPath, dpoh: dpohPath, subjects: q2.source },
       q1_who_is_named: dpohComposition(dpohRows),
-      q2_citation_rate: citationRate(commRows, 'subject_raw'),
+      q2_citation_rate: q2,
       q3_filing_lag: filingLag(commRows),
       q4_row_shape: dpohRowShape(dpohRows),
     };
@@ -209,9 +222,10 @@ Q1  Who is named on ${q1.total_dpoh_rows.toLocaleString()} DPOH rows?
       role only (no person)     ${q1.role_only.toLocaleString()} rows
     top classes: ${Object.entries(q1.breakdown).slice(0, 5).map(([k, n]) => `${k}=${n}`).join('  ')}
 
-Q2  Explicit bill citations in ${q2.rows_examined.toLocaleString()} communications
+Q2  Explicit bill citations in ${(q2.communications_examined ?? q2.rows_examined).toLocaleString()} communications
       cite a bill number        ${q2.pct_with_citation}%   <- below ~5% means the citation join is thin
       distinct bills cited      ${q2.distinct_bills_cited}
+      most cited                ${(q2.top_bills_cited || []).slice(0, 6).map((b) => `${b.number}(${b.n})`).join(' ')}
 
 Q3  Filing lag (meeting -> public)
       median ${q3.median_days} days | p75 ${q3.p75_days} | p90 ${q3.p90_days} | max ${q3.max_days}

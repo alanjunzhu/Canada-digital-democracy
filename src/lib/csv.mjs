@@ -1,3 +1,30 @@
+// CSV parsing for the OCL bulk exports.
+//
+// Encoding is not a detail here. Verified against the real
+// Communication_SubjectMatterDetailsExport.csv: the OCL exports are
+// **Windows-1252**, not UTF-8. Decoding them as UTF-8 does not throw — it
+// quietly replaces every accented character, so 'Thériault' arrives as
+// 'Th\uFFFDriault' and never matches the member roster again. Accents are load
+// bearing in this pipeline, so the decode is explicit and reported.
+
+/**
+ * @returns {{ text: string, encoding: 'utf-8'|'windows-1252' }}
+ */
+export function decodeCsv(buf) {
+  const bytes = Buffer.isBuffer(buf) ? buf : Buffer.from(buf);
+  // A BOM settles it outright.
+  if (bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+    return { text: new TextDecoder('utf-8').decode(bytes.subarray(3)), encoding: 'utf-8' };
+  }
+  try {
+    return { text: new TextDecoder('utf-8', { fatal: true }).decode(bytes), encoding: 'utf-8' };
+  } catch {
+    // Not valid UTF-8: cp1252 decodes every byte, so this cannot fail, and it
+    // is what the OCL actually ships.
+    return { text: new TextDecoder('windows-1252').decode(bytes), encoding: 'windows-1252' };
+  }
+}
+
 // Minimal RFC 4180 parser. The OCL files contain quoted fields with embedded
 // commas and newlines (subject-matter free text especially), so a split(',')
 // shortcut silently corrupts rows — which would look like bad data later.

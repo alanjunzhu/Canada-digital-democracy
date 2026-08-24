@@ -48,6 +48,16 @@ export const DPOH_COLUMNS = {
   institution: ['INSTITUTION_EN', 'Institution'],
 };
 
+// The per-COMMUNICATION subject text — Communication_SubjectMatterDetailsExport.csv.
+// VERIFIED against the real export: these are the actual headers, not aliases.
+// This is the file the bill-citation join runs on, because it ties subject text
+// to a communication (and therefore to a date), not just to a registration.
+export const COMM_SUBJECT_DETAIL_COLUMNS = {
+  communication_id: ['COMLOG_ID'],
+  subject_codes: ['SUBJECT_CODE_OBJET'],
+  details: ['DESCRIPTION'],
+};
+
 export const SUBJECT_COLUMNS = {
   registration_id: ['REG_ID_ENR', 'Registration Number', 'Registration NUM'],
   category: ['SUBJECT_MATTER_EN', 'Subject Matter', 'Category'],

@@ -51,7 +51,9 @@ happened while nobody could see it.
 | Member roster from ourcommons.ca | **verified live in CI** — 346 members returned for the 45th |
 | Bill list from LEGISinfo | **verified live in CI** — 185 bills returned for 45-1 |
 | Bill stage dates from LEGISinfo | **fixed against the live shape**, re-verified each CI run |
-| **OCL bulk CSV column names** | **UNVERIFIED** — the download is what CI is for; see below |
+| Subject-details column names + encoding | **verified against the real export** (cp1252, 125,734 rows) |
+| Q2 citation rate | **answered: 3.4%** — under the 5% threshold, see NOTES.md |
+| **Remaining OCL column names** (primary, DPOH) | **UNVERIFIED** — awaiting those files in CI |
 
 The environment this was written in blocks egress to `lobbycanada.gc.ca`,
 `open.canada.ca`, `parl.ca` and `ourcommons.ca`. Every unverified piece is

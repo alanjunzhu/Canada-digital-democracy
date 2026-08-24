@@ -43,6 +43,39 @@ export function dpohComposition(dpohRows) {
   };
 }
 
+/**
+ * Q2, computed the honest way: per COMMUNICATION, not per row.
+ *
+ * The subject-details export carries one row per subject code, so a
+ * communication with four codes appears four times with the same text.
+ * Counting rows would inflate or deflate the rate depending on how many codes
+ * registrants happen to tick, which has nothing to do with bills.
+ */
+export function citationRateByCommunication(rows, { idField = 'communication_id', textField = 'details' } = {}) {
+  const byComm = new Map();
+  for (const r of rows) {
+    const id = r[idField];
+    if (!byComm.has(id)) byComm.set(id, []);
+    byComm.get(id).push(r[textField] || '');
+  }
+  let withCitation = 0;
+  const billCounts = new Map();
+  for (const texts of byComm.values()) {
+    const refs = extractBillRefs(texts.join(' \n '));
+    if (refs.length) withCitation++;
+    for (const ref of refs) billCounts.set(ref.number, (billCounts.get(ref.number) || 0) + 1);
+  }
+  return {
+    rows_examined: rows.length,
+    communications_examined: byComm.size,
+    communications_with_citation: withCitation,
+    pct_with_citation: pct(withCitation, byComm.size),
+    distinct_bills_cited: billCounts.size,
+    top_bills_cited: [...billCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 20)
+      .map(([number, n]) => ({ number, n })),
+  };
+}
+
 // Q2 — how many records cite a bill number explicitly?
 // The citation join is the only one precise enough to state as fact. If this
 // is small, the timeline has to lean on the subject-category join, which is

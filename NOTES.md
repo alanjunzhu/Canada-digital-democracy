@@ -92,6 +92,43 @@ roster rows in that frequency order. French portfolio phrases that appear there
 get an alias (built-ins in `roles.mjs`, data-specific ones in the roster file's
 `aliases`) rather than a looser match.
 
+## Q2 is answered, and it came in under the threshold
+
+Run against the real `Communication_SubjectMatterDetailsExport.csv`
+(125,734 rows covering 72,297 communications):
+
+| | |
+|---|---|
+| communications whose subject text cites a bill number | **2,451 — 3.4%** |
+| distinct bills cited | 114 |
+| most cited | C-5 (282), C-27 (255), C-282 (192), C-234 (167), C-2 (135) |
+
+The threshold written down in advance was **~5%**, and 3.4% is under it. The
+extractor is not what is limiting this: 3.44% of communications mention the
+word 'bill' or 'projet de loi' at all, and we catch 3.39% of them. The
+remaining 0.4% name an Act rather than a number ('budget bill', 'PIPEDA
+reform bill'), which is not a citation and should not be treated as one.
+
+So, per the rule set in advance: **the citation join cannot carry a
+general-purpose per-bill timeline.** What it can carry, and what the product
+should be built as:
+
+- For the ~114 bills that ARE cited, the evidence is strong and specific:
+  2,451 communications naming a bill, joinable to that bill's stages by date.
+  That is a real per-bill page, for those bills.
+- For everything else, the subject-CODE join (SMT-xx) is the only link, and it
+  is context, not evidence. It must be labelled that way on the page — 'these
+  registrants lobbied on this subject area in this window', never 'lobbied on
+  this bill'.
+- The 96.6% is itself a finding worth publishing: registrants overwhelmingly
+  describe subject areas, not legislation, so the public record does not say
+  which bill most lobbying is about.
+
+Also settled by that file: **the OCL exports are Windows-1252, not UTF-8.**
+Reading them as UTF-8 does not throw, it just replaces every accented
+character — which would have silently broken French name matching in the
+resolver. `decodeCsv` now detects and reports the encoding.
+
 ## What the live runs settled
 
 Running the pipeline on a GitHub runner (`.github/workflows/pipeline.yml`)

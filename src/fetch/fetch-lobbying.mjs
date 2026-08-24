@@ -13,7 +13,7 @@
 // downloading the wrong file.
 
 import { COMMUNICATION_COLUMNS, DPOH_COLUMNS } from '../config/sources.mjs';
-import { parseCsvRecords, mapColumns } from '../lib/csv.mjs';
+import { parseCsvRecords, mapColumns, decodeCsv } from '../lib/csv.mjs';
 import { fetchText, fetchToFile, probeTransports } from '../lib/http.mjs';
 
 const CKAN_PACKAGE = 'a34eb330-7136-4f5e-9f5f-3ba41df58b06';   // Monthly Communication Reports
@@ -82,7 +82,8 @@ export async function sniffHeaders(path) {
   try {
     const buf = Buffer.alloc(64 * 1024);
     const { bytesRead } = await fh.read(buf, 0, buf.length, 0);
-    const firstLine = buf.subarray(0, bytesRead).toString('utf8').split(/\r?\n/)[0] || '';
+    const { text } = decodeCsv(buf.subarray(0, bytesRead));
+    const firstLine = text.split(/\r?\n/)[0] || '';
     return parseCsvRecords(firstLine).headers;
   } finally {
     await fh.close();
