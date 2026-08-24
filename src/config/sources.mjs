@@ -29,23 +29,58 @@ export const SOURCES = {
 };
 
 // Canonical key -> acceptable header spellings (case/punctuation insensitive).
+//
+// VERIFIED against the real Communication_PrimaryExport.csv. The bilingual
+// suffixes are not decoration: the OCL names most columns in both languages at
+// once ('POSTED_DATE_PUBLICATION'), so guessing the English half alone misses
+// them. Older spellings are kept as aliases in case the export changes again.
 export const COMMUNICATION_COLUMNS = {
-  communication_id: ['COMLOG_ID', 'Communication Log Number', 'Numéro du rapport de communication', 'ID'],
-  registration_id: ['REG_ID_ENR', 'Registration Number', 'Registration NUM', 'Numéro d\'enregistrement'],
+  communication_id: ['COMLOG_ID', 'Communication Log Number', 'ID'],
   comm_date: ['COMM_DATE', 'Communication Date', 'Date of Communication', 'Date de la communication'],
-  posted_date: ['POSTED_DATE', 'Date Posted', 'Posted Date', 'Date de publication'],
-  institution: ['INSTITUTION_EN', 'Institution', 'Government Institution', 'Institution gouvernementale'],
-  subject_raw: ['SUBJECT_MATTER_EN', 'Subject Matter', 'Subject', 'Objet'],
-  client_name: ['CLIENT_ORG_CORP_NM_EN', 'Client Name', 'Client', 'Nom du client'],
-  registrant_name: ['REGISTRANT_NM', 'Registrant Name', 'Registrant', 'Nom du déclarant'],
+  // Two different dates, and the difference is the finding: SUBMISSION is when
+  // the registrant filed, POSTED is when the public could see it.
+  posted_date: ['POSTED_DATE_PUBLICATION', 'POSTED_DATE', 'Date Posted', 'Posted Date', 'Date de publication'],
+  submission_date: ['SUBMISSION_DATE_SOUMISSION', 'SUBMISSION_DATE', 'Date de soumission'],
+  client_name: ['EN_CLIENT_ORG_CORP_NM_AN', 'CLIENT_ORG_CORP_NM_EN', 'Client Name', 'Client'],
+  client_name_fr: ['FR_CLIENT_ORG_CORP_NM', 'Nom du client'],
+  client_id: ['CLIENT_ORG_CORP_NUM'],
+  registrant_surname: ['RGSTRNT_LAST_NM_DCLRNT', 'REGISTRANT_LAST_NM'],
+  registrant_given: ['RGSTRNT_1ST_NM_PRENOM_DCLRNT', 'REGISTRANT_FIRST_NM'],
+  registrant_id: ['REGISTRANT_NUM_DECLARANT'],
+  registration_type: ['REG_TYPE_ENR', 'Registration Type'],
+  previous_communication_id: ['PREV_COMLOG_ID_PRECEDNT'],
 };
 
-// The DPOH secondary file (one row per official per communication).
+// The DPOH secondary file — one row per official per communication.
+//
+// VERIFIED, and it overturns an assumption: the officials' names are NOT one
+// free-text cell. They arrive as separate surname / given-name / title columns,
+// so the resolver does not have to guess where a name ends and a role begins.
+// The free-text aliases stay for the registration-side files, which are not
+// structured this way.
 export const DPOH_COLUMNS = {
   communication_id: ['COMLOG_ID', 'Communication Log Number', 'ID'],
-  dpoh_raw: ['DPOH_NM', 'DPOH Name', 'Name', 'Nom du TPCD', 'Public Office Holder Name'],
-  dpoh_title_raw: ['DPOH_TITLE_EN', 'DPOH Title', 'Title', 'Titre'],
-  institution: ['INSTITUTION_EN', 'Institution'],
+  dpoh_surname: ['DPOH_LAST_NM_TCPD', 'DPOH Last Name'],
+  dpoh_given: ['DPOH_FIRST_NM_PRENOM_TCPD', 'DPOH First Name'],
+  dpoh_title_raw: ['DPOH_TITLE_TITRE_TCPD', 'DPOH_TITLE_EN', 'DPOH Title', 'Titre'],
+  branch: ['BRANCH_UNIT_DIRECTION_SERVICE'],
+  institution: ['INSTITUTION', 'INSTITUTION_EN'],
+  other_institution: ['OTHER_INSTITUTION_AUTRE'],
+};
+
+// The per-communication subject CODES (Communication_SubjectMattersExport.csv),
+// and the lookup that turns 'SMT-45' into words. Without the lookup the
+// category join is unreadable on a page.
+export const COMM_SUBJECT_CODE_COLUMNS = {
+  communication_id: ['COMLOG_ID'],
+  subject_code: ['SUBJECT_CODE_OBJET'],
+  custom_subject: ['CUSTOM_SUBJ_OBJET_PERSO'],
+};
+
+export const SUBJECT_CODE_LOOKUP_COLUMNS = {
+  subject_code: ['SUBJECT_CODE_OBJET'],
+  label_en: ['SMT_EN_DESC'],
+  label_fr: ['SMT_FR_DESC'],
 };
 
 // The per-COMMUNICATION subject text — Communication_SubjectMatterDetailsExport.csv.

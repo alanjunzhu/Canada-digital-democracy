@@ -138,7 +138,9 @@ export function dpohRowShape(dpohRows) {
   return {
     distinct_communications: perComm.size,
     mean_dpoh_rows_per_communication: counts.length ? +(dpohRows.length / counts.length).toFixed(2) : null,
-    max_dpoh_rows_per_communication: counts.length ? Math.max(...counts) : null,
+    // reduce, not Math.max(...counts): the real file has ~380k communications
+    // and spreading that many arguments overflows the call stack.
+    max_dpoh_rows_per_communication: counts.length ? counts.reduce((a, b) => (b > a ? b : a), 0) : null,
     rows_with_delimiter_suspects: delimiterSuspects,
     pct_suspect: pct(delimiterSuspects, dpohRows.length),
     verdict: delimiterSuspects / (dpohRows.length || 1) > 0.02

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { COMMUNICATION_COLUMNS, DPOH_COLUMNS, COMM_SUBJECT_DETAIL_COLUMNS, SESSIONS } from './config/sources.mjs';
-import { probeColumns, ingestCsv, isoDate } from './fetch/ingest-lobbying.mjs';
+import { probeColumns, ingestCsv, isoDate, normalizeDpohRows } from './fetch/ingest-lobbying.mjs';
 import { fetchMembers } from './fetch/fetch-members.mjs';
 import { fetchBills } from './fetch/fetch-bills.mjs';
 import { fetchLobbyingBulk } from './fetch/fetch-lobbying.mjs';
@@ -32,6 +32,13 @@ async function loadOffices(path = OFFICE_ROSTER, { strict = false } = {}) {
   const { holdings, errors, overlaps } = validateHoldings(raw.holdings || [], raw.aliases || {});
   return { index: buildOfficeIndex(holdings, raw.aliases || {}), holdings, errors, overlaps };
 }
+// Which file is which was settled by `fetch-lobbying`, by reading headers.
+// Every later command reuses that answer instead of guessing at filenames.
+const identifiedFiles = async () => {
+  try {
+    return JSON.parse(await readFile(`${OUT}/download-manifest.json`, 'utf8')).identified || {};
+  } catch { return {}; }
+};
 const write = async (name, obj) => {
   await mkdir(OUT, { recursive: true });
   await writeFile(`${OUT}/${name}`, JSON.stringify(obj, null, 2));
@@ -109,9 +116,10 @@ switch (cmd) {
     break;
   }
   case 'resolve': {
+    const identified = await identifiedFiles();
     const membersPath = flag('members', 'data/out/members-45.json');
-    const dpohPath = flag('dpoh', 'data/raw/communication_dpoh.csv');
-    const commsPath = flag('comms', 'data/raw/communications.csv');
+    const dpohPath = flag('dpoh', null) || identified.dpoh || 'data/raw/communication_dpoh.csv';
+    const commsPath = flag('comms', null) || identified.communications || 'data/raw/communications.csv';
 
     const { terms } = JSON.parse(await readFile(membersPath, 'utf8'));
     const overrides = JSON.parse(await readFile('data/overrides/dpoh-aliases.json', 'utf8')).aliases || {};
@@ -121,7 +129,8 @@ switch (cmd) {
 
     const { rows: commRows } = await ingestCsv(commsPath, COMMUNICATION_COLUMNS);
     const dateById = new Map(commRows.map((r) => [r.communication_id, isoDate(r.comm_date)]));
-    const { rows: dpohRows } = await ingestCsv(dpohPath, DPOH_COLUMNS);
+    const { rows: dpohRaw } = await ingestCsv(dpohPath, DPOH_COLUMNS);
+    const dpohRows = normalizeDpohRows(dpohRaw);
 
     const results = dpohRows.map((r) =>
       resolveDpoh(r.dpoh_raw, dateById.get(r.communication_id) || null, index, { institution: r.institution || '', title: r.dpoh_title_raw || '', overrides, offices }));
@@ -180,11 +189,12 @@ Top unmatched office keys (add an alias or a roster row for each):`);
   case 'stats': {
     // Answers the four questions in NOTES.md in one pass. Run this FIRST on
     // real data — the numbers decide what is worth building.
-    const commsPath = flag('comms', 'data/raw/communications.csv');
-    const dpohPath = flag('dpoh', 'data/raw/communication_dpoh.csv');
+    const identified = await identifiedFiles();
+    const commsPath = flag('comms', null) || identified.communications || 'data/raw/communications.csv';
+    const dpohPath = flag('dpoh', null) || identified.dpoh || 'data/raw/communication_dpoh.csv';
 
     const { rows: commRows } = await ingestCsv(commsPath, COMMUNICATION_COLUMNS);
-    const { rows: dpohRows } = await ingestCsv(dpohPath, DPOH_COLUMNS);
+    const dpohRows = normalizeDpohRows((await ingestCsv(dpohPath, DPOH_COLUMNS)).rows);
     for (const r of commRows) {
       r.comm_date = isoDate(r.comm_date);
       r.posted_date = isoDate(r.posted_date);
@@ -193,18 +203,23 @@ Top unmatched office keys (add an alias or a roster row for each):`);
     // Q2 prefers the per-communication subject-details export when it is
     // present: it is the file that actually carries the free text, and it ties
     // that text to a communication rather than to a registration.
-    const subjectsPath = flag('subjects', null) || (await (async () => {
-      // The download manifest already identified every extracted CSV; use its
-      // answer rather than a hard-coded filename.
-      try {
-        const m = JSON.parse(await readFile(`${OUT}/download-manifest.json`, 'utf8'));
-        return m.identified?.subjects || 'data/raw/communication_subject_details.csv';
-      } catch { return 'data/raw/communication_subject_details.csv'; }
-    })());
+    const subjectsPath = flag('subjects', null) || identified.subjects || 'data/raw/communication_subject_details.csv';
     let q2;
     try {
       const { rows: subjectRows } = await ingestCsv(subjectsPath, COMM_SUBJECT_DETAIL_COLUMNS);
-      q2 = { source: subjectsPath, ...citationRateByCommunication(subjectRows) };
+      // The denominator matters more than the rate. Only ~19% of
+      // communications carry any subject text at all, so 'x% of communications
+      // with text' and 'x% of communications' are different claims and both
+      // get reported.
+      const r = citationRateByCommunication(subjectRows);
+      q2 = {
+        source: subjectsPath,
+        ...r,
+        communications_in_dataset: commRows.length,
+        pct_of_all_communications: commRows.length
+          ? +(100 * r.communications_with_citation / commRows.length).toFixed(2) : null,
+        pct_of_communications_carrying_subject_text: r.pct_with_citation,
+      };
     } catch {
       q2 = { source: commsPath, ...citationRate(commRows, 'subject_raw') };
     }
@@ -228,8 +243,10 @@ Q1  Who is named on ${q1.total_dpoh_rows.toLocaleString()} DPOH rows?
       role only (no person)     ${q1.role_only.toLocaleString()} rows
     top classes: ${Object.entries(q1.breakdown).slice(0, 5).map(([k, n]) => `${k}=${n}`).join('  ')}
 
-Q2  Explicit bill citations in ${(q2.communications_examined ?? q2.rows_examined).toLocaleString()} communications
-      cite a bill number        ${q2.pct_with_citation}%   <- below ~5% means the citation join is thin
+Q2  Explicit bill citations
+      ${(q2.communications_examined ?? q2.rows_examined).toLocaleString()} of ${(q2.communications_in_dataset ?? 0).toLocaleString()} communications carry any subject text
+      cite a bill, of those     ${q2.pct_with_citation}%   <- below ~5% means the citation join is thin
+      cite a bill, of ALL       ${q2.pct_of_all_communications ?? 'n/a'}%
       distinct bills cited      ${q2.distinct_bills_cited}
       most cited                ${(q2.top_bills_cited || []).slice(0, 6).map((b) => `${b.number}(${b.n})`).join(' ')}
 

@@ -23,6 +23,22 @@ Designated Public Office Holder is filed monthly, naming the lobbyist, the
 client, the official, the institution and the subject. That is a timestamped
 record of access to power, and it joins cleanly to bill stages.
 
+## What the data says (measured, not assumed)
+
+| | |
+|---|---|
+| communications in the file | 380,400 (2008-07-02 → 2026-08-20) |
+| DPOH rows | 581,694 |
+| name a sitting member | **26.4%** — most logged access is with staff, not MPs |
+| cite a bill number | **0.64%** of all communications (3.4% of those carrying subject text) |
+| median filing lag, meeting → public | **26 days** (p90 42) |
+
+Those numbers set what this can honestly be: a record of access to *offices*,
+where per-bill claims are possible for the ~114 bills registrants actually
+name, and everything else is subject-area context. See `NOTES.md` for the
+thresholds these were tested against — written down before the numbers were
+known.
+
 ## The question this answers
 
 For each bill, for each stage (first reading, second reading, committee referral,
@@ -51,9 +67,8 @@ happened while nobody could see it.
 | Member roster from ourcommons.ca | **verified live in CI** — 346 members returned for the 45th |
 | Bill list from LEGISinfo | **verified live in CI** — 185 bills returned for 45-1 |
 | Bill stage dates from LEGISinfo | **fixed against the live shape**, re-verified each CI run |
-| Subject-details column names + encoding | **verified against the real export** (cp1252, 125,734 rows) |
-| Q2 citation rate | **answered: 3.4%** — under the 5% threshold, see NOTES.md |
-| **Remaining OCL column names** (primary, DPOH) | **UNVERIFIED** — awaiting those files in CI |
+| OCL column names + encoding | **verified against the real exports** (cp1252; DPOH names arrive structured) |
+| The four questions | **all answered** on 380,400 communications — see NOTES.md |
 
 The environment this was written in blocks egress to `lobbycanada.gc.ca`,
 `open.canada.ca`, `parl.ca` and `ourcommons.ca`. Every unverified piece is

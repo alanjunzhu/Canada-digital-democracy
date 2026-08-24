@@ -17,21 +17,50 @@ import { splitPersonName, normalizeName, foldDiacritics } from './names.mjs';
 // /\bd[ée]put[ée]\b/ never matches 'Député,' — the trailing 'é' is not a word
 // character, so there is no boundary before the comma. Folding first sidesteps
 // the whole class of bug rather than hand-writing lookarounds.
-const fold = (s) => foldDiacritics(String(s || ''));
+// Periods are stripped as well as accents: the real title column is full of
+// 'M.P.', 'Dep. Min.' and 'A/DM', and \bmp\b never matches 'm.p.'.
+const fold = (s) => foldDiacritics(String(s || '')).replace(/\./g, ' ').replace(/\s+/g, ' ');
 
 // Parliamentary secretaries ARE members of parliament. They must be tested
 // before the staff patterns, which would otherwise claim them via 'secretary'.
 const PARL_SEC_TITLES = [/\bparliamentary secretary\b/i, /\bsecretaire parlementaire\b/i];
-const MP_TITLES = [/\bmember of parliament\b/i, /\bdepute?e?\b/i, /\bmp\b/i];
+// Taken from the real title column, which registrants type by hand:
+// 'Member of Parliment' (sic, 1,000 rows), 'Member of the House of Commons',
+// 'M.P.'. A tolerant spelling here is not sloppiness — it is the difference
+// between counting a sitting member and losing them to 'unknown'.
+const MP_TITLES = [
+  /\bmember of parl\w*ment\b/i, /\bmembre du parlement\b/i,
+  /\bmember of the house of commons\b/i, /\bmembre de la chambre des communes\b/i,
+  // 'M.P.' folds to 'm p' once periods become spaces, so the spaced form has
+  // to be matched too.
+  /\bdepute?e?\b/i, /\bmp\b/i, /\bm p\b/i,
+];
 const SENATOR_TITLES = [/\bsenator\b/i, /\bsenat(eur|rice)\b/i];
-const MINISTER_TITLES = [/\bminister\b/i, /\bministre\b/i, /\bsecretary of state\b/i];
+// 'President of the Treasury Board' is a minister and must be tested before
+// the staff patterns, which would otherwise claim them via 'president'.
+const MINISTER_TITLES = [/\bminister\b/i, /\bministre\b/i, /\bsecretary of state\b/i, /\bsecretaire d etat\b/i];
+// Ministers whose title contains no word meaning 'minister'. These must be
+// matched BEFORE the staff patterns, which would otherwise claim them via
+// 'president' or 'leader'.
+const MINISTER_OVERRIDES = [
+  /\bpresident of the (?:treasury board|(?:queen|king)s privy council)\b/i,
+  /\bpresident du conseil du tresor\b/i,
+  /\bleader of the government in the house\b/i,
+];
+// Public servants and exempt staff: designated office holders, but not members.
+// 'ADM' is assistant deputy minister; it appears 2,561 times as a bare acronym.
 const STAFF_TITLES = [
   /\bchief of staff\b/i, /\badvis[oe]r\b/i, /\bconseill[eè]r\b/i, /\bdirector\b/i,
-  /\bassistant\b/i, /\bsecretary\b/i, /\bdeputy minister\b/i, /\bsous-ministre\b/i,
-  /\bchef de cabinet\b/i, /\bpolicy\b/i, /\bpress\b/i,
+  /\bdirect(eur|rice)\b/i, /\bassistant\b/i, /\bsecretary\b/i, /\bdeputy minister\b/i,
+  /\bsous ministre\b/i, /\bchef de cabinet\b/i, /\bpolicy\b/i, /\bpress\b/i,
+  /\badm\b/i, /\ba ?\/ ?dm\b/i, /\bdm\b/i, /\bassociate deputy\b/i, /\bpresident\b/i, /\bvice[ -]?president\b/i,
+  /\bmanager\b/i, /\bgestionnaire\b/i, /\bofficer\b/i, /\bcommissioner\b/i,
+  /\bcommissaire\b/i, /\bchief executive\b/i, /\bceo\b/i, /\bambassador\b/i,
+  /\bambassadeur\b/i, /\bsuperintendent\b/i, /\bregistrar\b/i, /\bcounsel\b/i,
+  /\banalyst\b/i, /\banalyste\b/i, /\beconomist\b/i, /\bchair\b/i, /\bpresident[e]?\b/i,
 ];
 // A trailing segment that is a role, not a name.
-const ROLEISH = [...PARL_SEC_TITLES, ...MP_TITLES, ...SENATOR_TITLES, ...MINISTER_TITLES,
+const ROLEISH = [...PARL_SEC_TITLES, ...MP_TITLES, ...SENATOR_TITLES, ...MINISTER_TITLES, ...MINISTER_OVERRIDES,
   ...STAFF_TITLES, /\boffice of\b/i, /\bcabinet\b/i, /\bhouse of commons\b/i,
   /\bchambre des communes\b/i, /\bsenate\b/i, /\bsenat\b/i];
 
@@ -51,6 +80,7 @@ export function classifyRole(text) {
   if (PARL_SEC_TITLES.some((r) => r.test(t))) return 'parl_sec';
   if (MP_TITLES.some((r) => r.test(t))) return 'mp';
   if (SENATOR_TITLES.some((r) => r.test(t))) return 'senator';
+  if (MINISTER_OVERRIDES.some((r) => r.test(t))) return 'minister';
   if (STAFF_TITLES.some((r) => r.test(t))) return 'staff';
   if (MINISTER_TITLES.some((r) => r.test(t))) return 'minister';
   return 'unknown';

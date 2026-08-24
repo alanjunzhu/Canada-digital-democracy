@@ -12,7 +12,10 @@
 // printed so a wrong guess is visible immediately instead of silently
 // downloading the wrong file.
 
-import { COMMUNICATION_COLUMNS, DPOH_COLUMNS, COMM_SUBJECT_DETAIL_COLUMNS } from '../config/sources.mjs';
+import {
+  COMMUNICATION_COLUMNS, DPOH_COLUMNS, COMM_SUBJECT_DETAIL_COLUMNS,
+  COMM_SUBJECT_CODE_COLUMNS, SUBJECT_CODE_LOOKUP_COLUMNS,
+} from '../config/sources.mjs';
 import { parseCsvRecords, mapColumns, decodeCsv } from '../lib/csv.mjs';
 import { fetchText, fetchToFile, probeTransports } from '../lib/http.mjs';
 
@@ -73,13 +76,20 @@ export function classifyCsvHeaders(headers) {
   const comm = mapColumns(headers, COMMUNICATION_COLUMNS);
   const dpoh = mapColumns(headers, DPOH_COLUMNS);
   const subj = mapColumns(headers, COMM_SUBJECT_DETAIL_COLUMNS);
+  const codes = mapColumns(headers, COMM_SUBJECT_CODE_COLUMNS);
+  const lookup = mapColumns(headers, SUBJECT_CODE_LOOKUP_COLUMNS);
+
+  // The code lookup is the one file with no communication key that we still
+  // want: it is what turns 'SMT-45' into words.
+  if (!lookup.missing.length) return 'subject_codes_lookup';
 
   const hasCommId = Boolean(comm.mapping.communication_id || dpoh.mapping.communication_id || subj.mapping.communication_id);
   if (!hasCommId) return null;                       // a registration file, or something else entirely
 
-  if (dpoh.mapping.dpoh_raw) return 'dpoh';
+  if (dpoh.mapping.dpoh_surname || dpoh.mapping.dpoh_raw) return 'dpoh';
   if (comm.mapping.comm_date) return 'communications';
   if (subj.mapping.details) return 'subjects';
+  if (codes.mapping.subject_code) return 'subject_codes';
   return null;
 }
 
@@ -114,7 +124,10 @@ async function expand(path, dir) {
   const outDir = `${dir}/${base}`;
   await promisify(execFile)('unzip', ['-o', '-q', path, '-d', outDir]);
   const names = await readdir(outDir, { recursive: true });
-  return names.filter((n) => /\.csv$/i.test(n)).map((n) => `${outDir}/${n}`);
+  // A zip repacked on macOS carries __MACOSX/._Name.csv resource forks beside
+  // every real file. They end in .csv and contain no CSV whatsoever.
+  const isJunk = (n) => n.includes('__MACOSX') || n.split('/').pop().startsWith('._');
+  return names.filter((n) => /\.csv$/i.test(n) && !isJunk(n)).map((n) => `${outDir}/${n}`);
 }
 
 /**
@@ -145,14 +158,23 @@ async function expandExisting(dir) {
  *   override does not quietly go stale.
  */
 export async function fetchLobbyingBulk({ dir = 'data/raw', packageId = CKAN_PACKAGE, overrides = {} } = {}) {
-  const pkg = JSON.parse(await fetchText(ckanUrl(packageId), { cachePath: `${dir}/ckan-package.json`, ttlMs: 3600e3 }));
-  if (!pkg.success) throw new Error(`CKAN package_show failed for ${packageId}`);
-  const picked = pickResources(pkg.result?.resources || []);
+  // The catalogue is how the current file URLs are found, not where the data
+  // comes from. If it is unreachable, a mirror already on disk is still
+  // perfectly good data — so this reports the lookup failure and carries on
+  // rather than taking the whole run down with it.
+  let pkg = null;
+  const failures = [];
+  try {
+    pkg = JSON.parse(await fetchText(ckanUrl(packageId), { cachePath: `${dir}/ckan-package.json`, ttlMs: 3600e3 }));
+    if (!pkg.success) throw new Error(`CKAN package_show returned success=false for ${packageId}`);
+  } catch (err) {
+    failures.push({ key: 'catalogue', url: ckanUrl(packageId), error: err.message, status: err.status ?? null });
+  }
+  const picked = pickResources(pkg?.result?.resources || []);
 
   // One resource failing must not hide the others: a 403 on the primary file
   // is itself a finding, and the dictionary is worth having either way.
   const downloaded = {};
-  const failures = [];
   for (const key of ['communications', 'dpoh', 'dictionary']) {
     const res = overrides[key] ? { name: `override (${key})`, url: overrides[key] } : picked[key];
     if (!res) continue;
@@ -191,6 +213,6 @@ export async function fetchLobbyingBulk({ dir = 'data/raw', packageId = CKAN_PAC
 
   return {
     picked, downloaded, failures, identified, contents,
-    dataset_title: pkg.result?.title || '', modified: pkg.result?.metadata_modified || '',
+    dataset_title: pkg?.result?.title || '', modified: pkg?.result?.metadata_modified || '',
   };
 }

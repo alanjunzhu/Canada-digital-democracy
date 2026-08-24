@@ -51,3 +51,40 @@ test('a title column on an empty name cell still classifies the role', () => {
   assert.equal(p.kind, 'role_only');
   assert.equal(p.roleClass, 'staff');
 });
+
+test('a structured DPOH row composes surname-first, which parseDpoh trusts', async () => {
+  // The real export splits the official's name across DPOH_LAST_NM_TCPD and
+  // DPOH_FIRST_NM_PRENOM_TCPD. Composing 'Surname, Given' preserves the one
+  // thing the file states outright; 'Given Surname' would discard it.
+  const { normalizeDpohRows } = await import('../src/fetch/ingest-lobbying.mjs');
+  const [row] = normalizeDpohRows([{
+    communication_id: 'C1', dpoh_surname: 'Thériault', dpoh_given: 'Jean-Yves',
+    dpoh_title_raw: 'Member of Parliament', institution: 'House of Commons',
+  }]);
+  assert.equal(row.dpoh_raw, 'Thériault, Jean-Yves');
+  const p = parseDpoh(row.dpoh_raw, row.institution, row.dpoh_title_raw);
+  assert.equal(p.surname, 'Thériault');
+  assert.equal(p.given, 'Jean-Yves');
+  assert.equal(p.roleClass, 'mp');
+});
+
+test('a DPOH row with no name at all stays a role-only row', async () => {
+  const { normalizeDpohRows } = await import('../src/fetch/ingest-lobbying.mjs');
+  const [row] = normalizeDpohRows([{ communication_id: 'C2', dpoh_surname: '', dpoh_given: '', dpoh_title_raw: 'Senior Policy Advisor' }]);
+  assert.equal(row.dpoh_raw, '');
+  assert.equal(parseDpoh(row.dpoh_raw, '', row.dpoh_title_raw).kind, 'role_only');
+});
+
+test('titles typed by hand in the real file still classify', () => {
+  // All four appear verbatim in the published DPOH export.
+  assert.equal(classifyRole('Member of Parliment'), 'mp');            // sic, 1,000 rows
+  assert.equal(classifyRole('Member of the House of Commons'), 'mp');
+  assert.equal(classifyRole('M.P.'), 'mp');
+  assert.equal(classifyRole('ADM'), 'staff');                          // assistant deputy minister
+});
+
+test('a minister whose title never says minister is not filed as staff', () => {
+  assert.equal(classifyRole('President of the Treasury Board'), 'minister');
+  assert.equal(classifyRole('President'), 'staff');                    // an agency head
+  assert.equal(classifyRole('Deputy Minister'), 'staff');              // still a public servant
+});

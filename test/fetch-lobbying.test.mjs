@@ -54,14 +54,18 @@ test('the subject-details export is recognized as its own kind', () => {
 });
 
 test('files inside the archive are identified by their headers, not their names', () => {
-  // Verified live: the catalogue publishes ONE zip holding both files, so the
-  // filename cannot be trusted to say which is which.
-  assert.equal(classifyCsvHeaders(['COMLOG_ID', 'DPOH_NM', 'DPOH_TITLE_EN', 'INSTITUTION_EN']), 'dpoh');
-  assert.equal(classifyCsvHeaders(['COMLOG_ID', 'REG_ID_ENR', 'COMM_DATE', 'POSTED_DATE', 'SUBJECT_MATTER_EN']), 'communications');
+  // These are the REAL headers, read off the published export. The DPOH file
+  // does not carry a single name cell at all — surname and given name arrive
+  // in their own columns, which is what identifies it.
+  assert.equal(classifyCsvHeaders(
+    ['COMLOG_ID', 'DPOH_LAST_NM_TCPD', 'DPOH_FIRST_NM_PRENOM_TCPD', 'DPOH_TITLE_TITRE_TCPD', 'INSTITUTION']), 'dpoh');
+  assert.equal(classifyCsvHeaders(
+    ['COMLOG_ID', 'EN_CLIENT_ORG_CORP_NM_AN', 'COMM_DATE', 'SUBMISSION_DATE_SOUMISSION', 'POSTED_DATE_PUBLICATION']), 'communications');
   assert.equal(classifyCsvHeaders(['README', 'Notes']), null);
 });
 
-test('the DPOH file is the one with a name column, even when both share ids', () => {
-  const shared = ['COMLOG_ID', 'REG_ID_ENR', 'COMM_DATE', 'DPOH Name'];
-  assert.equal(classifyCsvHeaders(shared), 'dpoh');
+test('the two subject files are told apart, and the code lookup is kept', () => {
+  // Same first two columns; only one of them carries the free text.
+  assert.equal(classifyCsvHeaders(['COMLOG_ID', 'SUBJECT_CODE_OBJET', 'CUSTOM_SUBJ_OBJET_PERSO']), 'subject_codes');
+  assert.equal(classifyCsvHeaders(['SUBJECT_CODE_OBJET', 'SMT_EN_DESC', 'SMT_FR_DESC']), 'subject_codes_lookup');
 });

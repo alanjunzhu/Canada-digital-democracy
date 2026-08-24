@@ -54,3 +54,28 @@ export const isoDate = (s) => {
   const d = new Date(t);
   return Number.isNaN(+d) ? null : d.toISOString().slice(0, 10);
 };
+
+/**
+ * The DPOH export gives the official's name in separate surname / given
+ * columns, so `dpoh_raw` — the verbatim evidence string the rest of the
+ * pipeline stores and resolves — is composed here, in 'Surname, Given' order.
+ *
+ * That order is not cosmetic: `parseDpoh` treats a comma as an unambiguous
+ * signal of surname-first, which is exactly what these columns mean. Composing
+ * 'Given Surname' instead would throw away the one thing the file tells us for
+ * certain.
+ *
+ * Rows that already carry a free-text name (the registration-side files) are
+ * passed through untouched.
+ */
+export function normalizeDpohRows(rows) {
+  return rows.map((r) => {
+    if (r.dpoh_raw) return r;
+    const surname = (r.dpoh_surname || '').trim();
+    const given = (r.dpoh_given || '').trim();
+    const dpoh_raw = surname && given ? `${surname}, ${given}` : surname || given || '';
+    // An official with no name at all is a role-only row, and the title column
+    // is what carries the role. Both are preserved verbatim.
+    return { ...r, dpoh_raw };
+  });
+}

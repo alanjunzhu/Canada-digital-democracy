@@ -92,42 +92,72 @@ roster rows in that frequency order. French portfolio phrases that appear there
 get an alias (built-ins in `roles.mjs`, data-specific ones in the roster file's
 `aliases`) rather than a looser match.
 
-## Q2 is answered, and it came in under the threshold
+## All four questions are answered
 
-Run against the real `Communication_SubjectMatterDetailsExport.csv`
-(125,734 rows covering 72,297 communications):
+Run against the real bulk export (380,400 communications, 2008-07-02 to
+2026-08-20; 581,694 DPOH rows). Thresholds were written down before the numbers
+were known, and two of the four triggered.
 
-| | |
-|---|---|
-| communications whose subject text cites a bill number | **2,451 — 3.4%** |
-| distinct bills cited | 114 |
-| most cited | C-5 (282), C-27 (255), C-282 (192), C-234 (167), C-2 (135) |
+### Q1 — who is actually named? **26.4% name a sitting member.** Threshold ~40%: **triggered.**
 
-The threshold written down in advance was **~5%**, and 3.4% is under it. The
-extractor is not what is limiting this: 3.44% of communications mention the
-word 'bill' or 'projet de loi' at all, and we catch 3.39% of them. The
-remaining 0.4% name an Act rather than a number ('budget bill', 'PIPEDA
-reform bill'), which is not a citation and should not be treated as one.
+| class | rows | |
+|---|---|---|
+| staff | 355,038 | 61% |
+| MP / parliamentary secretary | 146,883 | **26.4%** |
+| minister | 35,293 | 6% |
+| senator | 17,403 | 3% |
+| unclassified title | 20,044 | 3.4% |
+| no person named at all | 98 | — |
 
-So, per the rule set in advance: **the citation join cannot carry a
-general-purpose per-bill timeline.** What it can carry, and what the product
-should be built as:
+Almost every row names a *person* — only 98 of 581,694 are role-only — but the
+person is usually a public servant or exempt staffer, not a member. So the
+recorded decision stands: **the unit of the product is the office, not the
+MP**, and `office_holding` is what makes those 355k staff rows mean anything.
+The office resolver is built; the roster it needs is still empty.
 
-- For the ~114 bills that ARE cited, the evidence is strong and specific:
-  2,451 communications naming a bill, joinable to that bill's stages by date.
-  That is a real per-bill page, for those bills.
-- For everything else, the subject-CODE join (SMT-xx) is the only link, and it
-  is context, not evidence. It must be labelled that way on the page — 'these
-  registrants lobbied on this subject area in this window', never 'lobbied on
-  this bill'.
-- The 96.6% is itself a finding worth publishing: registrants overwhelmingly
-  describe subject areas, not legislation, so the public record does not say
-  which bill most lobbying is about.
+### Q2 — how many cite a bill? **3.4% of those with subject text; 0.64% of all.** Threshold ~5%: **triggered.**
 
-Also settled by that file: **the OCL exports are Windows-1252, not UTF-8.**
-Reading them as UTF-8 does not throw, it just replaces every accented
-character — which would have silently broken French name matching in the
-resolver. `decodeCsv` now detects and reports the encoding.
+Only 72,297 of 380,400 communications carry any subject text at all, so the
+denominator has to be stated: 2,451 communications cite a bill number, which is
+3.4% of the ones that say anything and **0.64% of the whole file**. 114
+distinct bills; most cited C-5 (282), C-27 (255), C-282 (192), C-234 (167).
+
+The extractor is not the limit — 3.44% mention 'bill' or 'projet de loi' at all
+and we catch 3.39% of those; the rest name an Act, not a number. The
+consequence recorded in advance applies: **the citation join cannot carry a
+general per-bill timeline.** It carries real per-bill pages for those ~114
+bills, and everything else has to lean on the subject-code join, labelled as
+context rather than evidence. The 99.4% is itself the finding: the public
+record mostly does not say which bill lobbying is about.
+
+### Q3 — the filing lag. **Median 26 days.** Threshold ~10 days: **not triggered.**
+
+p75 35 days, p90 42 days. A meeting held the week before clause-by-clause is
+routinely public only a month later, so the disclosure-lag framing holds and
+should be kept. (Max 5,748 days is a genuine outlier in the historical file,
+not a parsing artefact — the export goes back to 2008.)
+
+### Q4 — row shape. **One row per official.** No splitter needed.
+
+1.53 DPOH rows per communication, max 99. The schema assumption holds, so every
+number above stands.
+
+## What the files themselves taught us
+
+- **The DPOH names are structured, not free text.** The export has
+  `DPOH_LAST_NM_TCPD` / `DPOH_FIRST_NM_PRENOM_TCPD` / `DPOH_TITLE_TITRE_TCPD`,
+  so the resolver never has to guess where a name ends and a title begins.
+  `dpoh_raw` is composed as 'Surname, Given' — comma order is the one thing the
+  file states outright.
+- **The exports are Windows-1252.** Reading them as UTF-8 does not throw, it
+  just replaces every accent, which would have silently broken French name
+  matching.
+- **Titles are typed by hand.** 'Member of Parliment' (sic) appears 1,000
+  times, 'M.P.' 378, 'Member of the House of Commons' 410. Tolerating those
+  moved 6,000 rows out of 'unclassified'.
+- **Two date columns**, `SUBMISSION_DATE_SOUMISSION` and
+  `POSTED_DATE_PUBLICATION`: when the registrant filed, and when the public
+  could see it. Q3 uses the second.
 
 ## What the live runs settled
 
