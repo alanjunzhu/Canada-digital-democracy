@@ -52,8 +52,44 @@ ${body}
 }
 
 export const CSS = `:root {
+  color-scheme: light;
   --ink: #16191d; --muted: #5b6570; --rule: #dfe3e8; --bg: #fbfbfa;
   --accent: #7a1f2b; --panel: #fff;
+  --text-secondary: #5b6570;
+  /* Chart slots, validated against this site's own surfaces in both modes.
+     Blue is an ordinary logged meeting; red is one that was still unpublished
+     when the bill moved — and it never carries that meaning alone, it is
+     always paired with a triangle marker and a legend label. */
+  --series-access: #2a78d6;
+  --series-late: #d03b3b;
+  --chart-rule: #c9cfd6;
+  --caveat-bg: #fff8e8; --caveat-rule: #e8d9b0;
+}
+/* Dark mode is selected, not an inverted light mode: the chart steps are the
+   dark steps of the same hues, re-validated against the dark surface. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ink: #f2f3f5; --muted: #a4adb8; --rule: #2b3038; --bg: #101317;
+    --accent: #e08a95; --panel: #16191d;
+    --text-secondary: #a4adb8;
+    --series-access: #3987e5;
+    --series-late: #d03b3b;
+    --chart-rule: #39404a;
+    --caveat-bg: #241f14; --caveat-rule: #4a3f24;
+  }
+}
+/* The same steps again under an explicit stamp, so a future theme toggle wins
+   in both directions rather than only agreeing with the OS. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ink: #f2f3f5; --muted: #a4adb8; --rule: #2b3038; --bg: #101317;
+  --accent: #e08a95; --panel: #16191d;
+  --text-secondary: #a4adb8;
+  --series-access: #3987e5;
+  --series-late: #d03b3b;
+  --chart-rule: #39404a;
+  --caveat-bg: #241f14; --caveat-rule: #4a3f24;
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink);
@@ -87,5 +123,18 @@ a { color: var(--accent); }
 .stage.busy { border-left-color: var(--accent); }
 footer { border-top: 1px solid var(--rule); padding: 1.5rem; color: var(--muted); font-size: 0.85rem; }
 footer p { margin: 0 0 0.35rem; max-width: 62rem; }
-.caveat { background: #fff8e8; border: 1px solid #e8d9b0; border-radius: 6px; padding: 0.8rem 1rem; font-size: 0.9rem; }
+.chart { margin: 1.2rem 0 2rem; padding: 0; }
+.chart figcaption { margin: 0 0 0.5rem; font-size: 0.95rem; }
+.chart figcaption .note { display: block; font-weight: 400; margin-top: 0.15rem; }
+.chart svg { display: block; width: 100%; height: auto; background: var(--panel);
+  border: 1px solid var(--rule); border-radius: 6px; }
+.chart .bar:hover line, .chart .bar:hover circle { opacity: 1; }
+.legend { display: flex; flex-wrap: wrap; gap: 0.25rem 1.1rem; align-items: center;
+  font-size: 0.85rem; color: var(--muted); margin: 0 0 0.5rem; }
+.legend .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+  margin-right: 0.4rem; vertical-align: -1px; }
+.stage-tick { font-size: 11px; fill: var(--muted); font-weight: 600; }
+.axis-label { font-size: 11px; fill: var(--muted); }
+.caveat { background: var(--caveat-bg); border: 1px solid var(--caveat-rule); color: var(--ink);
+  border-radius: 6px; padding: 0.8rem 1rem; font-size: 0.9rem; }
 `;

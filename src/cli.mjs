@@ -284,6 +284,7 @@ switch (cmd) {
           communications: new Set(),
           clients: new Map(),
           people: new Map(),
+          years: new Map(),
           first_date: null,
           last_date: null,
           lags: [],
@@ -299,6 +300,8 @@ switch (cmd) {
       if (res.person_id) o.people.set(res.person_id, (o.people.get(res.person_id) || 0) + 1);
       const d = dateById.get(commId);
       if (d) {
+        const year = d.slice(0, 4);
+        o.years.set(year, (o.years.get(year) || 0) + 1);
         if (!o.first_date || d < o.first_date) o.first_date = d;
         if (!o.last_date || d > o.last_date) o.last_date = d;
         const posted = isoDate(comm?.posted_date);
@@ -322,6 +325,7 @@ switch (cmd) {
         first_date: o.first_date,
         last_date: o.last_date,
         median_filing_lag_days: medianOf(o.lags),
+        by_year: Object.fromEntries([...o.years.entries()].sort()),
         top_clients: [...o.clients.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15).map(([client, n]) => ({ client, n })),
       }))
       .sort((a, b) => b.communications - a.communications);

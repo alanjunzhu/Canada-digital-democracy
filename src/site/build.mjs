@@ -9,6 +9,7 @@ import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { STRINGS, LANGS, UNTRANSLATED } from './strings.mjs';
 import { layout, esc, slug, num, pct, date, CSS } from './render.mjs';
+import { accessTimeline, lagHistogram, yearlySparkline, stageReachedWhileUnpublished } from './charts.mjs';
 
 const read = async (dir, name) => {
   try { return JSON.parse(await readFile(`${dir}/${name}`, 'utf8')); } catch { return null; }
@@ -47,6 +48,8 @@ function homePage({ lang, t, ratio, resolution, offices, citations, generated })
   ${finding(num(q3?.median_days, lang), t.finding_lag, t.finding_lag_note)}
   ${finding(pct(resolution?.pct_attributed), t.finding_attributed, `${num(resolution?.total, lang)} ${t.of} ${num(resolution?.total, lang)}`)}
 </div>
+
+${lagHistogram({ buckets: q3?.histogram, t, lang })}
 
 <h2>${esc(t.offices_title)}</h2>
 <table>
@@ -99,6 +102,8 @@ function officePage({ lang, t, office, holdings, generated }) {
 <p class="lede">${num(office.communications, lang)} ${esc(t.office_meetings)} · ${date(office.first_date)} – ${date(office.last_date)}
  · ${esc(t.office_lag)} ${office.median_filing_lag_days ?? '—'} ${esc(t.days)}</p>
 
+${yearlySparkline({ years: office.by_year, t, lang })}
+
 ${held ? `<h2>${esc(t.holders_title)}</h2>
 <p class="caveat">${esc(t.observed_note)}</p>
 <table>
@@ -139,8 +144,20 @@ ${citations ? `<p class="note">${num(citations.links, lang)} · ${num(citations.
   });
 }
 
-function billPage({ lang, t, bill, generated }) {
-  const stages = (bill.stages || []).map((s) => `<div class="stage${s.communications ? ' busy' : ''}">
+function billPage({ lang, t, bill, links = [], generated }) {
+  const stages = bill.stages || [];
+  // The table is the chart's accessible twin, and the place the exact dates
+  // live. Both are built from the same rows.
+  const tableRows = links.slice(0, 60).map((l) => {
+    const crossed = stageReachedWhileUnpublished(l, stages);
+    return `<tr>
+      <td class="n">${date(l.comm_date)}</td>
+      <td class="n">${date(l.posted_date)}${crossed ? ' <strong title="' + esc(t.chart_late_note) + '">▲</strong>' : ''}</td>
+      <td>${esc(l.client_name || '—')}</td>
+      <td>${esc(l.official_label || '—')}</td>
+    </tr>`;
+  }).join('\n');
+  const stageBlocks = (bill.stages || []).map((s) => `<div class="stage${s.communications ? ' busy' : ''}">
   <h3>${esc(s.stage.replace(/_/g, ' '))} — ${date(s.event_date)}</h3>
   <p class="note">${esc(t.bill_before)} ${num(s.window_days, lang)} ${esc(t.days)}:
      ${num(s.communications, lang)} ${esc(t.office_meetings)}${s.median_filing_lag_days != null ? ` · ${esc(t.office_lag)} ${num(s.median_filing_lag_days, lang)} ${esc(t.days)}` : ''}</p>
@@ -158,7 +175,18 @@ function billPage({ lang, t, bill, generated }) {
     body: `<h1>${esc(bill.number)}</h1>
 <p class="lede">${esc(bill.short_title || '')}</p>
 <p class="note">${num(bill.total_linked_communications, lang)} ${esc(t.office_meetings)}</p>
-${stages || `<p class="note">—</p>`}
+
+${accessTimeline({ links, stages, t, lang })}
+
+${stageBlocks || `<p class="note">—</p>`}
+
+${tableRows ? `<h2>${esc(t.bill_before)}</h2>
+<p class="note">${esc(UNTRANSLATED[lang])}</p>
+<table>
+  <tr><th class="n">${esc(t.bill_date)}</th><th class="n">${esc(t.chart_published)}</th>
+      <th>${esc(t.bill_clients)}</th><th>${esc(t.bill_officials)}</th></tr>
+  ${tableRows}
+</table>` : ''}
 <p class="note"><a href="index.html">← ${esc(t.back)}</a></p>`,
   });
 }
@@ -221,6 +249,12 @@ export async function buildSite({ dataDir = 'data/out', outDir = 'site', maxOffi
   const offices = (await read(dataDir, 'office-access.json')) || [];
   const derived = await read(dataDir, 'derived-offices.json');
   const citations = await read(dataDir, 'citation-report.json');
+  const links = (await read(dataDir, 'comm-bill-links.json')) || [];
+  const linksByBill = new Map();
+  for (const l of links) {
+    if (!linksByBill.has(l.bill_id)) linksByBill.set(l.bill_id, []);
+    linksByBill.get(l.bill_id).push(l);
+  }
   const timelines = (await read(dataDir, 'timelines.json')) || [];
   const generated = ratio?.generated_at || new Date().toISOString().slice(0, 10);
 
@@ -252,7 +286,8 @@ export async function buildSite({ dataDir = 'data/out', outDir = 'site', maxOffi
     await put(`${outDir}/${lang}/bills/index.html`, billsIndex({ lang, t, timelines, citations, generated }));
     pages++;
     for (const bill of timelines) {
-      await put(`${outDir}/${lang}/bills/${slug(bill.bill_id)}.html`, billPage({ lang, t, bill, generated }));
+      await put(`${outDir}/${lang}/bills/${slug(bill.bill_id)}.html`,
+        billPage({ lang, t, bill, links: linksByBill.get(bill.bill_id) || [], generated }));
       pages++;
     }
   }

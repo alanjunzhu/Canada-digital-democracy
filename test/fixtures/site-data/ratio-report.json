@@ -1,7 +1,69 @@
 {
   "generated_at": "2026-08-24",
-  "q1_who_is_named": { "total_dpoh_rows": 1000, "pct_naming_a_sitting_member": 26.4 },
-  "q2_citation_rate": { "pct_of_all_communications": 0.64, "pct_with_citation": 3.4, "distinct_bills_cited": 130 },
-  "q3_filing_lag": { "median_days": 26, "p90_days": 42 },
-  "q4_row_shape": { "mean_dpoh_rows_per_communication": 1.53 }
+  "q1_who_is_named": {
+    "total_dpoh_rows": 1000,
+    "pct_naming_a_sitting_member": 26.4
+  },
+  "q2_citation_rate": {
+    "pct_of_all_communications": 0.64,
+    "pct_with_citation": 3.4,
+    "distinct_bills_cited": 130
+  },
+  "q3_filing_lag": {
+    "median_days": 26,
+    "p90_days": 42,
+    "histogram": [
+      {
+        "label": "0\u20137",
+        "from": 0,
+        "to": 7,
+        "n": 120
+      },
+      {
+        "label": "7\u201314",
+        "from": 7,
+        "to": 14,
+        "n": 340
+      },
+      {
+        "label": "14\u201321",
+        "from": 14,
+        "to": 21,
+        "n": 910
+      },
+      {
+        "label": "21\u201328",
+        "from": 21,
+        "to": 28,
+        "n": 1400
+      },
+      {
+        "label": "28\u201335",
+        "from": 28,
+        "to": 35,
+        "n": 880
+      },
+      {
+        "label": "35\u201342",
+        "from": 35,
+        "to": 42,
+        "n": 410
+      },
+      {
+        "label": "42\u201360",
+        "from": 42,
+        "to": 60,
+        "n": 150
+      },
+      {
+        "label": "60+",
+        "from": 60,
+        "to": null,
+        "n": 60
+      }
+    ]
+  },
+  "q4_row_shape": {
+    "mean_dpoh_rows_per_communication": 1.53
+  }
 }

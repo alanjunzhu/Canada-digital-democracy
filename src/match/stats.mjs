@@ -107,8 +107,23 @@ export function filingLag(comms) {
     .filter((n) => Number.isFinite(n) && n >= 0);
   const sorted = [...lags].sort((a, b) => a - b);
   const at = (q) => (sorted.length ? sorted[Math.floor(q * (sorted.length - 1))] : null);
+  // Buckets for the distribution chart. Fixed edges rather than equal-width
+  // bins: the interesting structure is all under two months, and a linear
+  // axis out to the multi-year outliers would hide it.
+  const edges = [0, 7, 14, 21, 28, 35, 42, 60, 90, 180, 365];
+  const histogram = edges.map((lo, i) => {
+    const hi = edges[i + 1] ?? Infinity;
+    return {
+      label: hi === Infinity ? `${lo}+` : `${lo}\u2013${hi}`,
+      from: lo,
+      to: hi === Infinity ? null : hi,
+      n: lags.filter((d) => d >= lo && d < hi).length,
+    };
+  });
+
   return {
     rows_with_both_dates: lags.length,
+    histogram,
     median_days: median(lags),
     p25_days: at(0.25),
     p75_days: at(0.75),
