@@ -54,11 +54,49 @@ after the fact:
 - **Q4 flagged as packed** — stop and write the splitter; every other number
   above is wrong until then.
 
+## Offices: built, roster empty
+
+Role rows — 'Chief of Staff, Office of the Minister of Finance', 'Directrice
+des politiques, Cabinet du premier ministre' — used to end at `not_a_person`
+and drop out of the product. They now canonicalize to an **office key**
+(`src/normalize/roles.mjs`) and resolve against a dated roster
+(`src/match/office.mjs`), so the access is attributed to a chair even when the
+individual in the room is never named.
+
+What the resolver returns for these rows:
+
+| status | meaning |
+|---|---|
+| `resolved` | the filing named the office *holder* (minister, parl. sec., deputy) and the roster says who that was on the date |
+| `office` | the chair is known, the individual is not — every staff row, plus a chair recorded with no person |
+| `ambiguous_office` | more than one holding covers that date; the roster needs fixing, nothing is guessed |
+| `not_a_person` | unchanged: no office key, or no holding covering the date |
+
+`office` rows are excluded from `pct_resolved_of_named_persons` — they named
+nobody, so they cannot count for or against identifying a person. The new
+`pct_attributed` is the number that says whether the site can be built: how
+much of the file lands *somewhere*, person or chair.
+
+**The roster is empty and must be transcribed by hand.** The Privy Council
+publishes ministry lists and appointment Orders in Council, but not as a bulk
+file, and this environment still has no egress to `*.gc.ca` — so inventing
+appointment dates was the one thing not worth doing. Format and sources are in
+the `_readme` of `data/overrides/office-holders.json`; `npm run offices`
+validates it and refuses to leave overlapping intervals unreported. With an
+empty roster every role row reports `unmatched` and behaviour is exactly as
+before: the feature is opt-in by data.
+
+The first real run should therefore be: `npm run resolve`, read
+`resolution-report.json → offices.top_unmatched_office_keys`, and transcribe
+roster rows in that frequency order. French portfolio phrases that appear there
+get an alias (built-ins in `roles.mjs`, data-specific ones in the roster file's
+`aliases`) rather than a looser match.
+
 ## Not yet built
 
-- `office_holding` is unpopulated — minister and parliamentary-secretary
-  appointment dates need a source (Privy Council appointment records). Until
-  then, role-named communications cannot be attributed to a person.
+- Deputy-minister and departmental staff offices are keyed off the department
+  name, which is not a portfolio; those keys only match a roster row carrying
+  the same institution string.
 - No UI. Deliberately: the coverage number from `npm run resolve` should decide
   what the UI is for.
 - No bilingual layer. The source data is bilingual; this pipeline keeps English

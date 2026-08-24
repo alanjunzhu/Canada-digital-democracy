@@ -9,6 +9,7 @@
 //      seat on the communication date before scoring.
 
 import { parseDpoh, isCommonsRole } from '../normalize/officials.mjs';
+import { resolveOffice, EMPTY_OFFICE_INDEX } from './office.mjs';
 import { surnameKeys, surnameMatch, givenNameMatch, normalizeName } from '../normalize/names.mjs';
 
 const inTerm = (term, date) =>
@@ -53,10 +54,14 @@ function scoreCandidate(parsed, term) {
  * @param {string} dpohRaw   verbatim DPOH string from the filing
  * @param {string} commDate  ISO date of the communication
  * @param {Map} index        from buildPersonIndex
- * @param {object} opts      { institution, title, overrides }
+ * @param {object} opts      { institution, title, overrides, offices }
+ *   `offices` is an office index (see match/office.mjs). When supplied, rows
+ *   that name no member — ministerial staff, bare roles — are attributed to
+ *   the OFFICE they name instead of being dropped as 'not_a_person'. Omit it
+ *   and the behaviour is exactly as before: an office is never invented.
  */
 export function resolveDpoh(dpohRaw, commDate, index, opts = {}) {
-  const { institution = '', title = '', overrides = {} } = opts;
+  const { institution = '', title = '', overrides = {}, offices = EMPTY_OFFICE_INDEX } = opts;
   const parsed = parseDpoh(dpohRaw, institution, title);
 
   const base = { dpoh_raw: dpohRaw, parsed, person_id: null, candidate_count: 0 };
@@ -65,13 +70,42 @@ export function resolveDpoh(dpohRaw, commDate, index, opts = {}) {
   if (override) {
     return { ...base, status: 'resolved', method: 'override', confidence: 1, person_id: override };
   }
+  // A row that names no sitting member is not a failure — it is access to an
+  // office. Try to name the office before giving up on the row.
+  const office = () => resolveOffice(parsed.role || parsed.raw, commDate, offices, { institution });
+  const withOffice = (fallback) => {
+    const o = office();
+    if (o.status === 'unmatched') return fallback;
+    return {
+      ...fallback,
+      // Office ambiguity gets its own status: it says nothing about whether a
+      // NAMED person was identified, so it must not move that denominator.
+      status: o.status === 'ambiguous' ? 'ambiguous_office' : o.status,   // 'resolved' | 'office'
+      method: o.method,
+      confidence: o.confidence ?? 0,
+      person_id: o.person_id,
+      holding_id: o.holding_id,
+      office_key: o.office_key,
+      office_title: o.office_title,
+      principal_person_id: o.principal_person_id,
+      candidate_count: o.candidate_count || 0,
+      ...(o.candidates ? { candidates: o.candidates } : {}),
+    };
+  };
+
   if (parsed.kind === 'role_only') {
-    // Not a failure: a role with no name is correctly reported, it simply has
-    // no person to attach. These roll up under 'staff access' instead.
-    return { ...base, status: 'not_a_person', method: null, confidence: 0 };
+    // A role with no name has no person to attach; with a roster loaded it
+    // still has a chair, and that is the fact worth keeping.
+    return withOffice({ ...base, status: 'not_a_person', method: null, confidence: 0 });
   }
   if (!isCommonsRole(parsed.roleClass)) {
-    return { ...base, status: 'not_a_person', method: parsed.roleClass, confidence: 0 };
+    // A named staffer or senator: the individual is known but is not an MP.
+    // Their office is still recorded, and person_id stays null — a named
+    // chief of staff is not the minister.
+    const o = office();
+    const fallback = { ...base, status: 'not_a_person', method: parsed.roleClass, confidence: 0 };
+    return o.status === 'unmatched' ? fallback
+      : { ...fallback, holding_id: o.holding_id, office_key: o.office_key, office_title: o.office_title, principal_person_id: o.principal_person_id };
   }
 
   const seen = new Set();
@@ -116,7 +150,7 @@ export function resolveDpoh(dpohRaw, commDate, index, opts = {}) {
 
 /** Aggregate coverage report — the tractability answer. */
 export function summarize(results) {
-  const by = { resolved: 0, ambiguous: 0, unresolved: 0, not_a_person: 0 };
+  const by = { resolved: 0, ambiguous: 0, unresolved: 0, not_a_person: 0, office: 0, ambiguous_office: 0 };
   const unresolvedCounts = new Map();
   for (const r of results) {
     by[r.status] = (by[r.status] || 0) + 1;
@@ -125,12 +159,18 @@ export function summarize(results) {
     }
   }
   const total = results.length || 1;
-  const personRows = total - by.not_a_person || 1;
+  // Office rows named no individual, so they are not part of the denominator
+  // for 'did we identify the person named'.
+  const personRows = total - by.not_a_person - by.office - by.ambiguous_office || 1;
   return {
     total,
     ...by,
     pct_resolved_of_all: +(100 * by.resolved / total).toFixed(1),
     pct_resolved_of_named_persons: +(100 * by.resolved / personRows).toFixed(1),
+    // How much of the whole file lands somewhere attributable — a person or a
+    // chair. This is the number that says whether the site can be built.
+    pct_attributed: +(100 * (by.resolved + by.office
+      + results.filter((r) => r.status === 'not_a_person' && r.holding_id).length) / total).toFixed(1),
     top_problem_strings: [...unresolvedCounts.entries()]
       .sort((a, b) => b[1] - a[1]).slice(0, 25)
       .map(([raw, n]) => ({ raw, n })),
