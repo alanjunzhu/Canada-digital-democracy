@@ -4,4 +4,6 @@ data/out/
 *.zip
 .DS_Store
 
-site/
+# The BUILT site only. Unanchored 'site/' also matches src/site/, which
+# quietly excluded the entire site generator from the repository.
+/site/
