@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { splitPersonName, surnameMatch, givenNameMatch, normalizeName, foldDiacritics, withinOneTypo, uniqueNearSurname } from '../src/normalize/names.mjs';
+import { splitPersonName, surnameMatch, givenNameMatch, normalizeName, foldDiacritics, withinOneTypo, uniqueNearSurname, cleanGivenName } from '../src/normalize/names.mjs';
 
 test('diacritics fold for comparison only', () => {
   assert.equal(surnameMatch('Theriault', 'Thériault'), 'exact');
@@ -49,4 +49,14 @@ test('a typo that fits two members is not a typo, it is a coin flip', () => {
   const keys = ['gill', 'hill'];
   assert.equal(uniqueNearSurname('bill', keys), null);
   assert.equal(uniqueNearSurname('gilll', ['gill', 'jones']), 'gill');
+});
+
+test('post-nominals inside the given-name column do not split a person in two', () => {
+  // 'Flaherty, P.C., M.P., The Honourable Jim' and 'Flaherty, Jim' are one
+  // finance minister; the decorations arrive inside the given-name field.
+  assert.equal(cleanGivenName('P.C., M.P., The Honourable Jim'), 'Jim');
+  assert.equal(cleanGivenName('The Honourable Chrystia'), 'Chrystia');
+  assert.equal(cleanGivenName('Jean-Yves'), 'Jean-Yves');
+  assert.equal(splitPersonName('Flaherty, P.C., M.P., The Honourable Jim').given, 'Jim');
+  assert.equal(splitPersonName('Flaherty, P.C., M.P., The Honourable Jim').surname, 'Flaherty');
 });

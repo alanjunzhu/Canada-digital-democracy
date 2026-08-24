@@ -52,3 +52,14 @@ test('supplied aliases extend the built-in portfolio table', () => {
   const aliases = { 'ministre des peches': 'minister of fisheries' };
   assert.equal(canonicalRole('Chef de cabinet, Cabinet de la ministre des Pêches', '', aliases).key, 'minister of fisheries');
 });
+
+test('an institution keeps its whole name as its key', () => {
+  // Regression, found in the office aggregates: splitting on the comma turned
+  // 'Innovation, Science and Economic Development Canada' into 'innovation',
+  // which then swallowed every other department starting with that word — one
+  // office appeared to have 112,125 communications.
+  assert.equal(canonicalRole('Chief of Staff', 'Innovation, Science and Economic Development Canada (ISED)').key,
+    'innovation science and economic development canada ised');
+  assert.notEqual(canonicalRole('Chief of Staff', 'Innovation, Science and Economic Development Canada (ISED)').key,
+    canonicalRole('Chief of Staff', 'Innovation Canada').key);
+});

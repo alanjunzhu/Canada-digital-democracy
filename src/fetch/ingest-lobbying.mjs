@@ -38,11 +38,22 @@ export async function ingestCsv(path, spec, { strict = true } = {}) {
   }
   const rows = records.map((r) => {
     const o = {};
-    for (const [key, header] of Object.entries(mapping)) o[key] = r[header] ?? null;
+    for (const [key, header] of Object.entries(mapping)) o[key] = emptyToNull(r[header]);
     return o;
   });
   return { rows, mapping, missing, headers, encoding };
 }
+
+/**
+ * The export writes missing values as the four characters 'null', not as an
+ * empty cell — 1,712 communications have a client named 'null'. Left alone it
+ * becomes the busiest lobbying client in Canada.
+ */
+export const emptyToNull = (v) => {
+  if (v === null || v === undefined) return null;
+  const t = String(v).trim();
+  return t === '' || /^(null|n\/a)$/i.test(t) ? null : t;
+};
 
 export const isoDate = (s) => {
   if (!s) return null;

@@ -18,6 +18,7 @@
     "resolve": "node src/cli.mjs resolve",
     "link": "node src/cli.mjs link",
     "timeline": "node src/cli.mjs timeline",
+    "site": "node src/cli.mjs site",
     "test": "node --test test/*.test.mjs"
   }
 }

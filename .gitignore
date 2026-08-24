@@ -3,3 +3,5 @@ data/raw/
 data/out/
 *.zip
 .DS_Store
+
+site/

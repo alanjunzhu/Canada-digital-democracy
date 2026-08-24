@@ -28,6 +28,8 @@ on:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
 
 jobs:
   run:
@@ -219,6 +221,27 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+      # The site is generated from data/out only, so it cannot show anything
+      # the pipeline did not measure.
+      - name: Build the site
+        if: always()
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run site 2>&1 | tee site.log
+          {
+            echo '## Site'
+            echo '```'
+            cat site.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the site for Pages
+        if: always()
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
       # Reads the resolution report's failures back and asks each candidate
       # roster endpoint whether it knows those people. Answers 'is the roster
       # complete' with evidence instead of assumption.
@@ -228,6 +251,7 @@ jobs:
         run: |
           set -o pipefail
           npm run probe:members -- --parliament 42 2>&1 | tee roster-probe.log
+          cat roster-probe.log >> headline-extra.log || true
           {
             echo '## Roster completeness'
             echo '```'
@@ -268,6 +292,7 @@ jobs:
               for (const t of (c.top_problem_strings || []).slice(0, 12)) console.log('  ' + String(t.n).padStart(6) + '  ' + t.raw);
             }
           " | tee headline.log
+          cat headline-extra.log 2>/dev/null | tee -a headline.log || true
           {
             echo '## Headline'
             echo '```'
@@ -285,3 +310,19 @@ jobs:
           path: data/raw/dictionary.*
           if-no-files-found: ignore
           retention-days: 30
+
+  # Publishing is its own job so a failed data step never publishes a half-built
+  # site, and a successful one always publishes the same artifact the run made.
+  publish:
+    needs: run
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

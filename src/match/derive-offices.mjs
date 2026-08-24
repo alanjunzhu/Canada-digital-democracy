@@ -17,7 +17,54 @@
 // when someone transcribes them, replace these rather than competing with them.
 
 import { canonicalRole } from '../normalize/roles.mjs';
-import { normalizeName } from '../normalize/names.mjs';
+import { normalizeName, givenNameMatch, splitPersonName, withinOneTypo } from '../normalize/names.mjs';
+
+/**
+ * 'Flaherty, Jim', 'Flaherty, James' and 'Flaherty, James M.' are one finance
+ * minister, not three. Within a single office, people whose surname matches and
+ * whose given name is the same name — including nickname and initial forms —
+ * are merged, and the spelling that appears most often becomes the display
+ * name. Across different offices nothing is merged: that would be asserting an
+ * identity the filings never state.
+ */
+function mergeNameVariants(people) {
+  const groups = [];
+  for (const p of people.values()) {
+    const { given, surname } = splitPersonName(p.person_name);
+    const key = normalizeName(surname);
+    // 'Sorenson, Kevin' and 'Sorensen, Kevin' are one minister of state. A
+    // one-letter difference in the surname is allowed to merge ONLY when the
+    // given name matches outright — the same bar the resolver uses.
+    const hit = groups.find((g) => (g.surnameKey === key || withinOneTypo(g.surnameKey, key))
+      && givenNameMatch(g.given, given) !== 'none');
+    if (hit) {
+      hit.members.push(p);
+      // Keep the longest given name as the group's anchor, so 'James M.'
+      // still matches a later 'James' and a later 'Jim'.
+      if (given.length > hit.given.length) hit.given = given;
+    } else {
+      groups.push({ surnameKey: key, given, members: [p] });
+    }
+  }
+  return groups.map((g) => {
+    const dates = g.members.flatMap((m) => m.dates);
+    const titles = new Map();
+    const names = new Map();
+    for (const m of g.members) {
+      for (const [tt, n] of m.titles) titles.set(tt, (titles.get(tt) || 0) + n);
+      names.set(m.person_name, (names.get(m.person_name) || 0) + m.dates.length);
+    }
+    return {
+      person_key: g.members[0].person_key,
+      person_id: g.members.find((m) => m.person_id)?.person_id || null,
+      person_name: [...names.entries()].sort((a, b) => b[1] - a[1])[0][0],
+      name_variants: [...names.keys()],
+      institution: g.members[0].institution,
+      dates,
+      titles,
+    };
+  });
+}
 
 // A portfolio, as opposed to a description of one. The title column is typed
 // by hand, so it produces things like 'ACOA Minister', 'Acting Minister',
@@ -53,7 +100,13 @@ export function deriveOfficeHoldings(observations, { minObservations = 3, minSha
     // portfolio, so 'who led this department, when' is the mapping that
     // actually attaches them to a person. It is derived from the same
     // observations and kept separately from the portfolio layer.
-    if (role.kind === 'principal' && o.institution) {
+    // Leading a department means holding the portfolio, so the title has to be
+    // a portfolio or the bare word. 'Finance Minister's Office - Departmental'
+    // is a staffer's desk, and reading it as 'this person led Finance Canada'
+    // would put the wrong name at the top of a department's page.
+    const leadsInstitution = role.kind === 'principal'
+      && (isPortfolioKey(role.key) || /^(minister|ministre|prime minister|premier ministre)$/.test(role.key));
+    if (leadsInstitution && o.institution) {
       const instKey = normalizeName(o.institution);
       if (instKey) {
         if (!byInstitution.has(instKey)) byInstitution.set(instKey, new Map());
@@ -89,7 +142,7 @@ export function deriveOfficeHoldings(observations, { minObservations = 3, minSha
   const excluded = [];
 
   for (const [officeKey, people] of byOffice) {
-    const spans = [...people.values()].map((p) => {
+    const spans = mergeNameVariants(people).map((p) => {
       const dates = p.dates.sort();
       return {
         ...p,
@@ -134,6 +187,7 @@ export function deriveOfficeHoldings(observations, { minObservations = 3, minSha
         holding_id: `observed:${officeKey}:${span.first_seen}`.replace(/\s+/g, '-'),
         person_id: span.person_id,
         person_name: span.person_name,
+        name_variants: span.name_variants,
         title: span.title,
         office_key: officeKey,
         start_date: span.first_seen,
@@ -149,7 +203,7 @@ export function deriveOfficeHoldings(observations, { minObservations = 3, minSha
   // The institution layer, same treatment: observation windows only.
   const institutionHoldings = [];
   for (const [instKey, people] of byInstitution) {
-    for (const p of people.values()) {
+    for (const p of mergeNameVariants(people)) {
       const dates = p.dates.sort();
       if (dates.length < minObservations) continue;    // one filing is not a tenure
       institutionHoldings.push({

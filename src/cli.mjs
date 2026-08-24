@@ -257,11 +257,75 @@ switch (cmd) {
 
     const { rows: commRows } = await ingestCsv(commsPath, COMMUNICATION_COLUMNS);
     const dateById = new Map(commRows.map((r) => [r.communication_id, isoDate(r.comm_date)]));
+    const commById = new Map(commRows.map((r) => [r.communication_id, r]));
     const { rows: dpohRaw } = await ingestCsv(dpohPath, DPOH_COLUMNS);
     const dpohRows = normalizeDpohRows(dpohRaw);
 
     const results = dpohRows.map((r) =>
       resolveDpoh(r.dpoh_raw, dateById.get(r.communication_id) || null, index, { institution: r.institution || '', title: r.dpoh_title_raw || '', overrides, offices }));
+
+    // Per-office aggregates for the site. Built here because this is the only
+    // place the DPOH rows, the resolver's answer and the communication's client
+    // and dates are all in memory at once.
+    const officeAgg = new Map();
+    results.forEach((res, i) => {
+      const key = res.office_key;
+      if (!key) return;
+      const commId = dpohRows[i].communication_id;
+      const comm = commById.get(commId);
+      if (!officeAgg.has(key)) {
+        officeAgg.set(key, {
+          office_key: key,
+          // The label is the office's own name as the filings write it, not a
+          // holder's job title: a minister whose institution is recorded as
+          // 'House of Commons' must not relabel the House as their portfolio.
+          labels: new Map(),
+          rows: 0,
+          communications: new Set(),
+          clients: new Map(),
+          people: new Map(),
+          first_date: null,
+          last_date: null,
+          lags: [],
+        });
+      }
+      const o = officeAgg.get(key);
+      const label = dpohRows[i].institution || res.office_title || key;
+      o.labels.set(label, (o.labels.get(label) || 0) + 1);
+      o.rows++;
+      o.communications.add(commId);
+      const client = comm?.client_name || null;
+      if (client) o.clients.set(client, (o.clients.get(client) || 0) + 1);
+      if (res.person_id) o.people.set(res.person_id, (o.people.get(res.person_id) || 0) + 1);
+      const d = dateById.get(commId);
+      if (d) {
+        if (!o.first_date || d < o.first_date) o.first_date = d;
+        if (!o.last_date || d > o.last_date) o.last_date = d;
+        const posted = isoDate(comm?.posted_date);
+        if (posted) {
+          const lag = Math.round((Date.parse(posted) - Date.parse(d)) / 86400000);
+          if (lag >= 0) o.lags.push(lag);
+        }
+      }
+    });
+    const medianOf = (xs) => {
+      if (!xs.length) return null;
+      const s2 = [...xs].sort((a, b) => a - b);
+      return s2[Math.floor(s2.length / 2)];
+    };
+    const officeAccess = [...officeAgg.values()]
+      .map((o) => ({
+        office_key: o.office_key,
+        label: [...o.labels.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || o.office_key,
+        rows: o.rows,
+        communications: o.communications.size,
+        first_date: o.first_date,
+        last_date: o.last_date,
+        median_filing_lag_days: medianOf(o.lags),
+        top_clients: [...o.clients.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15).map(([client, n]) => ({ client, n })),
+      }))
+      .sort((a, b) => b.communications - a.communications);
+    await write('office-access.json', officeAccess.slice(0, 300));
 
     const report = summarize(results);
     // Offices get their own coverage report: 'which chairs did we fail to
@@ -508,6 +572,12 @@ Q4  DPOH row shape
     console.log(`${links.length} citation links across ${byBill.size} bills`);
     break;
   }
+  case 'site': {
+    const { buildSite } = await import('./site/build.mjs');
+    const r = await buildSite({ dataDir: OUT, outDir: flag('out', 'site') });
+    console.log(`built ${r.pages} pages (${r.offices} offices, ${r.bills} bills, EN + FR) from data generated ${r.generated}`);
+    break;
+  }
   case 'timeline': {
     const billsPath = flag('bills', `${OUT}/bills-all.json`);
     const linksPath = flag('links', `${OUT}/comm-bill-links.json`);
@@ -534,5 +604,6 @@ Q4  DPOH row shape
   npm run resolve          -- --dpoh <csv> --comms <csv>   entity resolution + coverage report
   npm run link             -- [--bills <json>]              citations -> session-scoped bills
   npm run timeline         -- --bills <json> --links <json>
+  npm run site             -- [--out site]                  build the static site (EN/FR)
 Sessions configured: ${SESSIONS.map((s) => `${s.parliament}-${s.session}`).join(', ')}`);
 }

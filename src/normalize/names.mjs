@@ -41,6 +41,20 @@ export function normalizeName(s) {
     .replace(/\s+/g, ' ');
 }
 
+// Post-nominals and honorifics arrive inside the given-name column itself:
+// 'Flaherty, P.C., M.P., The Honourable Jim' is one finance minister with three
+// decorations in front of his first name. Dropping them is what lets the
+// variant merge back onto 'Flaherty, Jim'.
+const POST_NOMINAL = /^(p\.?c\.?|m\.?p\.?|q\.?c\.?|c\.?m\.?|o\.?c\.?|phd|md|hon|honourable|honorable|the|right|rt|sen|senator)$/i;
+
+export function cleanGivenName(given) {
+  const kept = String(given || '')
+    .split(',')
+    .map((seg) => seg.split(/\s+/).filter((w) => w && !POST_NOMINAL.test(w.replace(/\.$/, ''))).join(' ').trim())
+    .filter(Boolean);
+  return kept.length ? kept[kept.length - 1] : '';
+}
+
 const PARTICLES = new Set(['de', 'du', 'des', 'la', 'le', 'van', 'von', 'der', 'den', 'st', 'ste', 'mac', 'mc']);
 
 // Index keys for a surname. A hyphenated or particled surname is indexed under
@@ -110,8 +124,8 @@ export function splitPersonName(raw) {
   if (!cleaned) return { given: '', surname: '' };
 
   if (cleaned.includes(',')) {
-    const [last, first = ''] = cleaned.split(',').map((s) => s.trim());
-    return { given: first, surname: last };
+    const [last, ...rest] = cleaned.split(',').map((s) => s.trim());
+    return { given: cleanGivenName(rest.join(', ')), surname: last };
   }
   const parts = cleaned.split(' ');
   if (parts.length === 1) return { given: '', surname: parts[0] };

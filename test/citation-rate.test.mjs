@@ -25,3 +25,14 @@ test('French citations count, and each bill is counted once per communication', 
   assert.deepEqual(r.top_bills_cited.map((b) => b.number).sort(), ['C-282', 'C-5']);
   assert.equal(r.top_bills_cited.find((b) => b.number === 'C-5').n, 1);
 });
+
+test("the literal string 'null' is not a lobbying client", async () => {
+  // It appears 1,712 times in the real export and would otherwise rank as the
+  // busiest client in the country.
+  const { emptyToNull } = await import('../src/fetch/ingest-lobbying.mjs');
+  assert.equal(emptyToNull('null'), null);
+  assert.equal(emptyToNull('NULL'), null);
+  assert.equal(emptyToNull('  '), null);
+  assert.equal(emptyToNull('N/A'), null);
+  assert.equal(emptyToNull('Canadian Bankers Association'), 'Canadian Bankers Association');
+});

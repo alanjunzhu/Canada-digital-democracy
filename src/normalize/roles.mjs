@@ -64,13 +64,19 @@ export const PORTFOLIO_ALIASES = {
 // office-of wrapper when it survived the split.
 const LEAD_NOISE = /^(?:the|l|la|le|les|de|du|des|honourable|honorable|hon|right honourable|rt hon|office of the|office of)\b\s*/;
 
-function tidyPortfolio(s) {
-  let p = String(s || '').split(',')[0].trim();
+// `fromInstitution` keeps the whole string: an institution's name is not a
+// list of role segments, and splitting it on commas turns 'Innovation, Science
+// and Economic Development Canada' into 'innovation' — which then swallows
+// every other department whose name happens to start with that word.
+function tidyPortfolio(s, { fromInstitution = false } = {}) {
+  let p = (fromInstitution ? String(s || '') : String(s || '').split(',')[0]).trim();
   let prev;
   do { prev = p; p = p.replace(LEAD_NOISE, '').trim(); } while (p !== prev);
-  // 'minister of finance canada' and 'department of finance canada' both name
-  // the same chair in filings; the trailing country name never distinguishes.
-  return p.replace(/\s+canada$/, '').trim();
+  // 'minister of finance canada' and 'minister of finance' name the same chair,
+  // so the trailing country name is dropped from a PORTFOLIO. An institution
+  // keeps it: 'Finance Canada' and 'Global Affairs Canada' are the names of the
+  // departments, and 'Senate of Canada' becomes 'senate of' without it.
+  return fromInstitution ? p : p.replace(/\s+canada$/, '').trim();
 }
 
 /** kind of relationship between the named role and the office. */
@@ -125,7 +131,7 @@ export function canonicalRole(roleText, institutionHint = '', aliases = {}) {
       const i = segments.findIndex((s) => DEPUTY.test(s));
       portfolio = tidyPortfolio(segments.slice(i + 1).join(' '));
     }
-    if (!portfolio) { portfolio = tidyPortfolio(clean(institutionHint)); via = 'institution'; }
+    if (!portfolio) { portfolio = tidyPortfolio(clean(institutionHint).replace(/,/g, ' '), { fromInstitution: true }); via = 'institution'; }
   } else {
     // Staff and principals alike: prefer an explicit 'Office of the ...',
     // otherwise the segment that names a minister.
@@ -135,7 +141,7 @@ export function canonicalRole(roleText, institutionHint = '', aliases = {}) {
     // named. This is the common case by a wide margin: 296,101 of 355,051
     // staff rows, every bare 'Minister' row, and every unclassifiable title
     // that still states which department the person works in.
-    if (!portfolio) { portfolio = tidyPortfolio(clean(institutionHint)); via = 'institution'; }
+    if (!portfolio) { portfolio = tidyPortfolio(clean(institutionHint).replace(/,/g, ' '), { fromInstitution: true }); via = 'institution'; }
   }
 
   portfolio = alias(portfolio);
