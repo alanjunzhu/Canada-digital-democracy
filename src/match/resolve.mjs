@@ -10,7 +10,7 @@
 
 import { parseDpoh, isCommonsRole } from '../normalize/officials.mjs';
 import { resolveOffice, EMPTY_OFFICE_INDEX } from './office.mjs';
-import { surnameKeys, surnameMatch, givenNameMatch, normalizeName } from '../normalize/names.mjs';
+import { surnameKeys, surnameMatch, givenNameMatch, normalizeName, uniqueNearSurname } from '../normalize/names.mjs';
 
 const inTerm = (term, date) =>
   (!term.start_date || term.start_date <= date) && (!term.end_date || term.end_date >= date);
@@ -29,12 +29,14 @@ export function buildPersonIndex(terms) {
 
 // Scores are additive and deliberately legible: you should be able to read a
 // confidence back out to a human as a sentence.
-function scoreCandidate(parsed, term) {
-  const sm = surnameMatch(parsed.surname, term.surname);
+function scoreCandidate(parsed, term, { typo = false } = {}) {
+  const sm = typo ? 'typo' : surnameMatch(parsed.surname, term.surname);
   if (sm === 'none') return null;
 
-  let score = sm === 'exact' ? 0.6 : 0.35;
-  const reasons = [sm === 'exact' ? 'surname' : 'surname-part'];
+  // A surname reached through a typo starts below an exact one, so the given
+  // name has to do the work of confirming the identity.
+  let score = sm === 'exact' ? 0.6 : sm === 'typo' ? 0.5 : 0.35;
+  const reasons = [sm === 'exact' ? 'surname' : sm === 'typo' ? 'surname-typo' : 'surname-part'];
 
   const gm = parsed.given ? givenNameMatch(parsed.given, term.given_name) : 'none';
   if (gm === 'exact') { score += 0.4; reasons.push('given'); }
@@ -73,6 +75,15 @@ export function resolveDpoh(dpohRaw, commDate, index, opts = {}) {
   // A row that names no sitting member is not a failure — it is access to an
   // office. Try to name the office before giving up on the row.
   const office = () => resolveOffice(parsed.role || parsed.raw, commDate, offices, { institution });
+  // Attaches the office to a row without changing what the row says about the
+  // person. Used where the person could not be identified: the chair is still
+  // known, and 'access to Finance Canada' is the fact the product is about.
+  const withOfficeContext = (row) => {
+    const o = office();
+    if (o.status === 'unmatched' || !o.office_key) return row;
+    return { ...row, office_key: o.office_key, office_title: o.office_title, holding_id: o.holding_id, principal_person_id: o.principal_person_id };
+  };
+
   const withOffice = (fallback) => {
     const o = office();
     if (o.status === 'unmatched') return fallback;
@@ -118,26 +129,46 @@ export function resolveDpoh(dpohRaw, commDate, index, opts = {}) {
     }
   }
 
+  // Nothing matched the surname as written. Before giving up, check whether it
+  // is a single-character typo of exactly one member's surname — and only
+  // exactly one. See uniqueNearSurname.
+  let method_prefix = '';
+  if (!pool.length) {
+    const near = uniqueNearSurname(parsed.surname, index.keys());
+    if (near) {
+      for (const term of index.get(near) || []) pool.push(term);
+      method_prefix = 'typo-';
+    }
+  }
+
   const eligible = pool.filter((t) => inTerm(t, commDate));
   // If nobody was sitting on that date, the filing may predate our roster or
   // name a former member. Report it rather than falling back to the current
   // roster, which is how these pipelines quietly produce wrong answers.
   if (!eligible.length) {
-    return { ...base, status: 'unresolved', method: pool.length ? 'out-of-term' : 'no-surname-match', confidence: 0, candidate_count: pool.length };
+    // Failing to identify the person does not mean the row is unattributable:
+    // a senior public servant is named, and their institution is stated. Keep
+    // the failure visible, attach the office.
+    return withOfficeContext({ ...base, status: 'unresolved', method: pool.length ? 'out-of-term' : 'no-surname-match', confidence: 0, candidate_count: pool.length });
   }
 
-  const scored = eligible.map((t) => scoreCandidate(parsed, t)).filter(Boolean)
+  const scored = eligible.map((t) => scoreCandidate(parsed, t, { typo: Boolean(method_prefix) })).filter(Boolean)
     .sort((a, b) => b.score - a.score);
   if (!scored.length) {
-    return { ...base, status: 'unresolved', method: 'no-surname-match', confidence: 0 };
+    return withOfficeContext({ ...base, status: 'unresolved', method: 'no-surname-match', confidence: 0 });
   }
 
   const [best, second] = scored;
   const decisive = !second || best.score - second.score >= 0.15;
 
-  if (best.score >= 0.7 && decisive) {
+  // A typo'd surname must clear a higher bar than a correctly spelled one, and
+  // it must be carried by the given name: 'Hadju, Patty' resolves because
+  // Patty is right, not because Hajdu is close.
+  const floor = method_prefix ? 0.85 : 0.7;
+  if (best.score >= floor && decisive) {
     return {
-      ...base, status: 'resolved', method: best.method, confidence: Number(best.score.toFixed(3)),
+      ...base, status: 'resolved', method: method_prefix + best.method,
+      confidence: Number((method_prefix ? best.score * 0.85 : best.score).toFixed(3)),
       person_id: best.term.person_id, candidate_count: scored.length, reasons: best.reasons,
     };
   }
@@ -172,8 +203,9 @@ export function summarize(results) {
     // Attribution means 'this row lands on an office or a person'. A staff row
     // naming Finance Canada is attributed even when no roster row says who led
     // Finance Canada that week — the office is the unit, and the file states it.
-    pct_attributed: +(100 * (by.resolved + by.office
-      + results.filter((r) => r.status === 'not_a_person' && (r.holding_id || r.office_key)).length) / total).toFixed(1),
+    // One definition, applied to every row: did this land on a person or on an
+    // office? Status says which kind of landing it was.
+    pct_attributed: +(100 * results.filter((r) => r.person_id || r.office_key).length / total).toFixed(1),
     top_problem_strings: [...unresolvedCounts.entries()]
       .sort((a, b) => b[1] - a[1]).slice(0, 25)
       .map(([raw, n]) => ({ raw, n })),

@@ -131,7 +131,11 @@ export function canonicalRole(roleText, institutionHint = '', aliases = {}) {
     // otherwise the segment that names a minister.
     const officeSeg = segments.map((s) => s.match(OFFICE_OF)).find(Boolean);
     portfolio = tidyPortfolio(officeSeg ? officeSeg[1] : findSeg(PRINCIPAL));
-    if (!portfolio && kind === 'staff') { portfolio = tidyPortfolio(clean(institutionHint)); via = 'institution'; }
+    // No portfolio in the title? Then the institution IS the office being
+    // named. This is the common case by a wide margin: 296,101 of 355,051
+    // staff rows, every bare 'Minister' row, and every unclassifiable title
+    // that still states which department the person works in.
+    if (!portfolio) { portfolio = tidyPortfolio(clean(institutionHint)); via = 'institution'; }
   }
 
   portfolio = alias(portfolio);

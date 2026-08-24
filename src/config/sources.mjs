@@ -23,8 +23,20 @@ export const SOURCES = {
   members: {
     // House of Commons open data. Current members:
     currentXml: 'https://www.ourcommons.ca/members/en/search/xml',
-    // Historical rosters are per-parliament; verify the exact param on first run.
     byParliamentXml: (parliament) => `https://www.ourcommons.ca/members/en/search/xml?parliament=${parliament}`,
+    // A roster of ~338 for a Parliament is one seat per riding, which is a
+    // roster of who sat at ONE MOMENT — it cannot include the member who died
+    // or resigned mid-term and the by-election winner who replaced them. The
+    // resolver is temporal, so a missing predecessor is not a small gap: every
+    // communication with them comes back unresolved. `npm run probe:members`
+    // fetches each candidate below and reports which one knows about members
+    // the data says existed.
+    candidates: (parliament) => [
+      { label: 'search/xml?parliament', url: `https://www.ourcommons.ca/members/en/search/xml?parliament=${parliament}` },
+      { label: 'search/xml?parliament&caucusId=all', url: `https://www.ourcommons.ca/members/en/search/xml?parliament=${parliament}&caucusId=all` },
+      { label: 'members/xml (all, unfiltered)', url: 'https://www.ourcommons.ca/members/en/search/xml' },
+      { label: 'ProactiveDisclosure-style full list', url: `https://www.ourcommons.ca/Members/en/search/xml?parliament=${parliament}&view=list` },
+    ],
   },
 };
 

@@ -121,3 +121,54 @@ export function splitPersonName(raw) {
   while (cut > 1 && PARTICLES.has(normalizeName(parts[cut - 1]))) cut--;
   return { given: parts.slice(0, cut).join(' '), surname: parts.slice(cut).join(' ') };
 }
+
+/**
+ * One typo apart: a single substitution, insertion, deletion, OR a transposed
+ * pair of adjacent letters.
+ *
+ * The transposition case is not an embellishment — it is the motivating one.
+ * 'Hadju' for 'Hajdu' appears 119 times in the real file, and under plain
+ * Levenshtein a swapped pair costs TWO edits, so a distance-1 rule would miss
+ * exactly the error people actually make while typing.
+ */
+export function withinOneTypo(a, b) {
+  if (a === b) return true;
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+  if (long.length - short.length > 1) return false;
+
+  let i = 0;
+  while (i < short.length && short[i] === long[i]) i++;
+  if (i === short.length) return long.length === short.length + 1;   // one trailing insert
+
+  if (a.length === b.length) {
+    // Substitution: the rest must match exactly.
+    if (a.slice(i + 1) === b.slice(i + 1)) return true;
+    // Transposition of the pair at i.
+    return a[i] === b[i + 1] && a[i + 1] === b[i] && a.slice(i + 2) === b.slice(i + 2);
+  }
+  // Insertion or deletion at i.
+  return short.slice(i) === long.slice(i + 1);
+}
+
+/**
+ * The one surname in `keys` within a single edit of `surname` — or null.
+ *
+ * 'Hadju, Patty' appears 119 times in the real file and is Patty Hajdu, a
+ * sitting minister. One transposed letter should not cost a person their
+ * identity. But this only answers when the answer is unambiguous: a typo that
+ * is within one edit of TWO different members is not a typo we can fix, it is
+ * a coin flip, and it returns null.
+ */
+export function uniqueNearSurname(surname, keys, { minLength = 5 } = {}) {
+  const n = normalizeName(surname).replace(/ /g, '');
+  if (n.length < minLength) return null;
+  let hit = null;
+  for (const key of keys) {
+    if (Math.abs(key.length - n.length) > 1) continue;
+    if (withinOneTypo(n, key)) {
+      if (hit && hit !== key) return null;              // two candidates: not a typo, a guess
+      hit = key;
+    }
+  }
+  return hit;
+}

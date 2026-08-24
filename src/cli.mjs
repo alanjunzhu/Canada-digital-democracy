@@ -6,6 +6,7 @@ import { fetchMembers } from './fetch/fetch-members.mjs';
 import { fetchBills } from './fetch/fetch-bills.mjs';
 import { fetchLobbyingBulk } from './fetch/fetch-lobbying.mjs';
 import { buildPersonIndex, resolveDpoh, summarize } from './match/resolve.mjs';
+import { normalizeName as normalizeNameFor } from './normalize/names.mjs';
 import { validateHoldings, buildOfficeIndex, summarizeOffices, EMPTY_OFFICE_INDEX } from './match/office.mjs';
 import { deriveOfficeHoldings } from './match/derive-offices.mjs';
 import { buildBillTimeline } from './match/timeline.mjs';
@@ -111,6 +112,37 @@ switch (cmd) {
     // A missing primary file is fatal to every number downstream, so it fails
     // the step — but only after the full picture has been printed.
     if (!identified.communications || !identified.dpoh) process.exitCode = 1;
+    break;
+  }
+  case 'probe-members': {
+    // Which roster endpoint actually knows about members who left mid-term?
+    // Rather than assert who those are, this asks the lobbying data: take the
+    // surnames that failed to resolve on rows whose title says 'MP', and see
+    // which candidate roster contains them.
+    const parliament = Number(flag('parliament', '42'));
+    const { SOURCES } = await import('./config/sources.mjs');
+    const { parseMembersXml } = await import('./fetch/fetch-members.mjs');
+    const { fetchText } = await import('./lib/http.mjs');
+
+    let wanted = [];
+    try {
+      const report = JSON.parse(await readFile(`${OUT}/resolution-report.json`, 'utf8'));
+      wanted = (report.top_problem_strings || []).map((t) => t.raw.split(',')[0].trim()).filter(Boolean);
+    } catch { /* no report yet */ }
+    console.log(`\n== roster candidates for parliament ${parliament}`);
+    console.log(`   checking for ${wanted.length} surnames that failed to resolve: ${wanted.slice(0, 8).join(', ')}`);
+
+    for (const c of SOURCES.members.candidates(parliament)) {
+      try {
+        const xml = await fetchText(c.url, { cachePath: null });
+        const { persons } = parseMembersXml(xml, parliament);
+        const surnames = new Set(persons.map((p) => normalizeNameFor(p.surname)));
+        const found = wanted.filter((w) => surnames.has(normalizeNameFor(w)));
+        console.log(`   ${String(persons.length).padStart(5)} members  ${found.length}/${wanted.length} of the missing surnames  ${c.label}`);
+      } catch (err) {
+        console.log(`   FAILED  ${c.label}: ${err.message}`);
+      }
+    }
     break;
   }
   case 'fetch-members': {
@@ -493,7 +525,8 @@ Q4  DPOH row shape
     console.log(`lobby-to-law
   npm run probe            -- --comms <csv> --dpoh <csv>   inspect real headers vs expected
   npm run fetch:lobbying                                    download the OCL bulk files (CI does this)
-  npm run fetch:members    -- --parliament 45
+  npm run probe:members    -- --parliament 42               which roster endpoint knows former members
+  npm run fetch:members    -- --parliaments 39,40,41,42,43,44,45
   npm run fetch:bills      -- --session 45-1
   npm run stats            -- --comms <csv> --dpoh <csv>   the four questions in NOTES.md
   npm run offices          -- [--roster <json>]             validate the ministerial roster

@@ -8,6 +8,7 @@
   "scripts": {
     "probe": "node src/cli.mjs probe",
     "fetch:lobbying": "node src/cli.mjs fetch-lobbying",
+    "probe:members": "node src/cli.mjs probe-members",
     "fetch:members": "node src/cli.mjs fetch-members",
     "fetch:bills": "node src/cli.mjs fetch-bills",
     "stats": "node src/cli.mjs stats",

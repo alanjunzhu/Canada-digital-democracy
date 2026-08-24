@@ -219,6 +219,22 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+      # Reads the resolution report's failures back and asks each candidate
+      # roster endpoint whether it knows those people. Answers 'is the roster
+      # complete' with evidence instead of assumption.
+      - name: Which roster endpoint knows former members
+        if: always()
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run probe:members -- --parliament 42 2>&1 | tee roster-probe.log
+          {
+            echo '## Roster completeness'
+            echo '```'
+            cat roster-probe.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       # Last, so the numbers are the last thing in the log rather than buried
       # under two artifact uploads. This is the run's actual output.
       - name: Headline numbers

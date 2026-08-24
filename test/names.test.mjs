@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { splitPersonName, surnameMatch, givenNameMatch, normalizeName, foldDiacritics } from '../src/normalize/names.mjs';
+import { splitPersonName, surnameMatch, givenNameMatch, normalizeName, foldDiacritics, withinOneTypo, uniqueNearSurname } from '../src/normalize/names.mjs';
 
 test('diacritics fold for comparison only', () => {
   assert.equal(surnameMatch('Theriault', 'Thériault'), 'exact');
@@ -32,4 +32,21 @@ test('given name forms', () => {
 
 test("O'Connell normalizes without the apostrophe splitting the token", () => {
   assert.equal(normalizeName("O'Connell"), 'oconnell');
+});
+
+test('a transposed pair is one typo, which is the error people actually make', () => {
+  // 'Hadju' for 'Hajdu', 119 times in the real file. Plain Levenshtein scores
+  // a swap as two edits and would miss it.
+  assert.equal(withinOneTypo('hadju', 'hajdu'), true);
+  assert.equal(withinOneTypo('smith', 'smiht'), true);
+  assert.equal(withinOneTypo('smith', 'smyth'), true);     // substitution
+  assert.equal(withinOneTypo('smith', 'smiths'), true);    // insertion
+  assert.equal(withinOneTypo('smith', 'jones'), false);
+  assert.equal(withinOneTypo('gill', 'hill'), true);
+});
+
+test('a typo that fits two members is not a typo, it is a coin flip', () => {
+  const keys = ['gill', 'hill'];
+  assert.equal(uniqueNearSurname('bill', keys), null);
+  assert.equal(uniqueNearSurname('gilll', ['gill', 'jones']), 'gill');
 });

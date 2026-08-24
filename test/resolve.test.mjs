@@ -87,3 +87,26 @@ test('office rows sit outside the named-person denominator', () => {
   assert.equal(s.pct_resolved_of_named_persons, 100);   // 1 of 1 named person
   assert.equal(s.pct_attributed, 100);                  // both rows land somewhere
 });
+
+test('a one-character typo resolves when the given name carries it', () => {
+  // 'Hadju, Patty' appears 119 times in the real file and is Patty Hajdu.
+  // The fixture roster has Robert Smith; 'Smth, Bob' is the same shape of slip.
+  const res = r('Simth, Robert, Member of Parliament', '2026-01-05');   // transposed, as in Hadju/Hajdu
+  assert.equal(res.person_id, 'p-smith-robert');
+  assert.match(res.method, /^typo-/);
+  assert.ok(res.confidence < 0.9, 'a typo match must cost confidence');
+});
+
+test('a typo with the wrong given name is not resolved', () => {
+  // The surname being close is never enough on its own.
+  const res = r('Simth, Zachary, Member of Parliament', '2026-01-05');
+  assert.notEqual(res.status, 'resolved');
+});
+
+test('an unresolved person still carries the office their filing names', () => {
+  // Senior public servants are named, are not MPs, and are not failures: the
+  // institution is stated and that is what the product is about.
+  const res = r('Verheul, Steve', '2026-02-10', { institution: 'Global Affairs Canada (GAC)', title: 'Chief Negotiator' });
+  assert.equal(res.person_id, null);
+  assert.ok(res.office_key, 'the institution should be attached');
+});
