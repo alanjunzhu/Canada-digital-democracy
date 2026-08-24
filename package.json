@@ -15,6 +15,7 @@
     "derive:offices": "node src/cli.mjs derive-offices",
     "ingest:lobbying": "node src/cli.mjs ingest-lobbying",
     "resolve": "node src/cli.mjs resolve",
+    "link": "node src/cli.mjs link",
     "timeline": "node src/cli.mjs timeline",
     "test": "node --test test/*.test.mjs"
   }

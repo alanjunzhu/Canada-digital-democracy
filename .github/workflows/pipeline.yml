@@ -17,9 +17,9 @@ on:
       parliaments:
         description: Parliaments to fetch rosters for (comma separated)
         default: '39,40,41,42,43,44,45'
-      session:
-        description: Parliament-session for bills, e.g. 45-1
-        default: '45-1'
+      sessions:
+        description: Parliament-sessions to fetch bills for (comma separated)
+        default: '39-1,39-2,40-1,40-2,40-3,41-1,41-2,42-1,43-1,43-2,44-1,45-1'
   schedule:
     - cron: '17 9 5 * *'      # the 5th of each month, after the OCL publishes
   push:
@@ -35,7 +35,7 @@ jobs:
     timeout-minutes: 30
     env:
       PARLIAMENTS: ${{ inputs.parliaments || '39,40,41,42,43,44,45' }}
-      SESSION: ${{ inputs.session || '45-1' }}
+      SESSIONS: ${{ inputs.sessions || '39-1,39-2,40-1,40-2,40-3,41-1,41-2,42-1,43-1,43-2,44-1,45-1' }}
       # Set this repository variable to a URL the runner can reach if
       # lobbycanada.gc.ca refuses it (a release asset on this repo works).
       OCL_ZIP_URL: ${{ vars.OCL_ZIP_URL }}
@@ -140,7 +140,7 @@ jobs:
         run: |
           set -o pipefail
           npm run fetch:members -- --parliaments "$PARLIAMENTS" 2>&1 | tee members.log
-          npm run fetch:bills   -- --session "$SESSION"       2>&1 | tee bills.log
+          npm run fetch:bills   -- --sessions "$SESSIONS"      2>&1 | tee bills.log
           {
             echo '## Parliament'
             echo '```'
@@ -176,7 +176,24 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           exit 1
 
-      - name: Entity resolution coverage
+      # The office roster, derived from the filings themselves, and the two
+      # joins it and the bill data make possible.
+      - name: Derive offices, link citations, build timelines
+        if: always() && steps.files.outputs.comms != '' && steps.files.outputs.dpoh != ''
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run derive:offices 2>&1 | tee offices.log
+          npm run link           2>&1 | tee link.log
+          npm run timeline       2>&1 | tee timeline.log
+          {
+            echo '## Offices and the bill join'
+            echo '```'
+            cat offices.log link.log timeline.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Entity resolution coverage (uses the derived roster)
         if: always() && steps.files.outputs.comms != '' && steps.files.outputs.dpoh != ''
         continue-on-error: true
         run: |
@@ -218,6 +235,10 @@ jobs:
               console.log('Q3 filing lag median      : ' + r.q3_filing_lag.median_days + ' days  (p90 ' + r.q3_filing_lag.p90_days + ')');
               console.log('Q4 rows per communication : ' + r.q4_row_shape.mean_dpoh_rows_per_communication);
             }
+            const t = read('citation-report.json');
+            const d = read('derived-offices.json');
+            if (d) console.log('offices derived         : ' + (d.holdings || []).length + ' holdings, ' + (d.contested || []).length + ' contested windows');
+            if (t) console.log('citation links          : ' + t.links + ' across ' + t.distinct_bills + ' bills');
             if (c) {
               console.log('');
               console.log('resolved     ' + c.resolved + '   (' + c.pct_resolved_of_named_persons + '% of named-person rows)');

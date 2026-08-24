@@ -9,6 +9,7 @@ import { buildPersonIndex, resolveDpoh, summarize } from './match/resolve.mjs';
 import { validateHoldings, buildOfficeIndex, summarizeOffices, EMPTY_OFFICE_INDEX } from './match/office.mjs';
 import { deriveOfficeHoldings } from './match/derive-offices.mjs';
 import { buildBillTimeline } from './match/timeline.mjs';
+import { linkSubjectToBills } from './match/bill-refs.mjs';
 import { dpohComposition, citationRate, citationRateByCommunication, filingLag, dpohRowShape } from './match/stats.mjs';
 
 const args = process.argv.slice(2);
@@ -146,10 +147,57 @@ switch (cmd) {
     break;
   }
   case 'fetch-bills': {
-    const ps = flag('session', '45-1');
-    const { bills, events, shape } = await fetchBills(ps);
-    await write(`bills-${ps}.json`, { bills, events });
-    console.log(`${bills.length} bills, ${events.length} stage events`);
+    // The lobbying record spans seven Parliaments, and a bill number means a
+    // different bill in each session, so citations can only be scoped if every
+    // session the data covers is loaded.
+    const sessions = (flag('sessions', null) || flag('session', '45-1')).split(/[,\s]+/).filter(Boolean);
+    const allBills = [];
+    const allEvents = [];
+    const ranges = [];
+    let shape = null;
+
+    for (const ps of sessions) {
+      let r;
+      try {
+        r = await fetchBills(ps);
+      } catch (err) {
+        console.log(`   session ${ps}: FAILED ${err.message}`);
+        continue;
+      }
+      await write(`bills-${ps}.json`, { bills: r.bills, events: r.events });
+      console.log(`   session ${ps}: ${r.bills.length} bills, ${r.events.length} stage events`);
+      shape = shape || (r.events.length ? null : r.shape);
+      allBills.push(...r.bills);
+      allEvents.push(...r.events);
+
+      const [parliament, session] = ps.split('-').map(Number);
+      const configured = SESSIONS.find((x) => x.parliament === parliament && x.session === session);
+      const dates = r.events.map((e) => e.event_date).sort();
+      ranges.push({
+        parliament, session,
+        start_date: configured?.start_date || dates[0] || null,
+        end_date: configured?.end_date ?? dates[dates.length - 1] ?? null,
+        // Says which dates are real and which were inferred from bill activity.
+        dates_from: configured ? 'config' : 'derived-from-bill-events',
+      });
+    }
+
+    // Contiguous, non-overlapping ranges: a derived range starts where the
+    // previous session ends, because a session's first bill event is later
+    // than the session itself began, and a citation near a boundary must not
+    // land in two sessions at once.
+    ranges.sort((a, b) => String(a.start_date).localeCompare(String(b.start_date)));
+    for (let i = 1; i < ranges.length; i++) {
+      if (ranges[i - 1].end_date && ranges[i].start_date && ranges[i - 1].end_date >= ranges[i].start_date) {
+        ranges[i - 1].end_date = ranges[i].start_date;
+        ranges[i - 1].end_adjusted = true;
+      }
+    }
+
+    await write('bills-all.json', { bills: allBills, events: allEvents, sessions: ranges });
+    const bills = allBills;
+    const events = allEvents;
+    console.log(`${bills.length} bills, ${events.length} stage events across ${ranges.length} session(s)`);
     if (!events.length && shape) {
       // Do not let this pass quietly: a timeline with no stage dates is not a
       // timeline. Dump what LEGISinfo actually published so the extractor can
@@ -352,9 +400,85 @@ Q4  DPOH row shape
 `);
     break;
   }
+  case 'link': {
+    // The citation join: bill numbers written in a communication's subject
+    // text, scoped to the session the communication happened in.
+    const identified = await identifiedFiles();
+    const billsPath = flag('bills', `${OUT}/bills-all.json`);
+    const subjectsPath = flag('subjects', null) || identified.subjects;
+    const commsPath = flag('comms', null) || identified.communications;
+    const dpohPath = flag('dpoh', null) || identified.dpoh;
+
+    const { bills, sessions } = JSON.parse(await readFile(billsPath, 'utf8'));
+    const knownBillIds = new Set(bills.map((b) => b.bill_id));
+    const billById = new Map(bills.map((b) => [b.bill_id, b]));
+
+    const { rows: commRows } = await ingestCsv(commsPath, COMMUNICATION_COLUMNS);
+    const commById = new Map(commRows.map((r) => [r.communication_id, r]));
+    const { rows: subjectRows } = await ingestCsv(subjectsPath, COMM_SUBJECT_DETAIL_COLUMNS);
+
+    const textByComm = new Map();
+    for (const r of subjectRows) {
+      if (!textByComm.has(r.communication_id)) textByComm.set(r.communication_id, []);
+      textByComm.get(r.communication_id).push(r.details || '');
+    }
+
+    const links = [];
+    const unmatched = new Map();
+    for (const [commId, texts] of textByComm) {
+      const comm = commById.get(commId);
+      const date = isoDate(comm?.comm_date);
+      const r = linkSubjectToBills(texts.join(' \n '), date, sessions, knownBillIds);
+      for (const l of r.links) {
+        links.push({
+          communication_id: commId,
+          bill_id: l.bill_id,
+          method: l.method,
+          confidence: l.confidence,
+          comm_date: date,
+          posted_date: isoDate(comm?.posted_date),
+          client_name: comm?.client_name || null,
+          registrant_name: [comm?.registrant_surname, comm?.registrant_given].filter(Boolean).join(', ') || null,
+        });
+      }
+      // A citation we cannot place is kept and counted: it is either a bill
+      // outside the sessions we loaded, or a number that never existed.
+      for (const u of r.unmatched) {
+        const key = `${u.bill_id || u.number} (${u.reason})`;
+        unmatched.set(key, (unmatched.get(key) || 0) + 1);
+      }
+    }
+
+    // Who was in the room, for the communications that made it through. Only
+    // the linked ones, so this stays a small join rather than a 581k-row one.
+    const linkedComms = new Set(links.map((l) => l.communication_id));
+    const dpohRows = normalizeDpohRows((await ingestCsv(dpohPath, DPOH_COLUMNS)).rows)
+      .filter((r) => linkedComms.has(r.communication_id));
+    const officialsByComm = new Map();
+    for (const r of dpohRows) {
+      if (!officialsByComm.has(r.communication_id)) officialsByComm.set(r.communication_id, []);
+      officialsByComm.get(r.communication_id).push([r.dpoh_raw, r.dpoh_title_raw].filter(Boolean).join(' — '));
+    }
+    for (const l of links) l.official_label = (officialsByComm.get(l.communication_id) || []).join(' | ') || null;
+
+    const byBill = new Map();
+    for (const l of links) byBill.set(l.bill_id, (byBill.get(l.bill_id) || 0) + 1);
+
+    await write('comm-bill-links.json', links);
+    await write('citation-report.json', {
+      communications_with_subject_text: textByComm.size,
+      links: links.length,
+      distinct_bills: byBill.size,
+      top_bills: [...byBill.entries()].sort((a, b) => b[1] - a[1]).slice(0, 25)
+        .map(([bill_id, n]) => ({ bill_id, n, short_title: billById.get(bill_id)?.short_title || null })),
+      unplaced_citations: [...unmatched.entries()].sort((a, b) => b[1] - a[1]).slice(0, 25).map(([ref, n]) => ({ ref, n })),
+    });
+    console.log(`${links.length} citation links across ${byBill.size} bills`);
+    break;
+  }
   case 'timeline': {
-    const billsPath = flag('bills', 'data/out/bills-45-1.json');
-    const linksPath = flag('links', 'data/out/comm-bill-links.json');
+    const billsPath = flag('bills', `${OUT}/bills-all.json`);
+    const linksPath = flag('links', `${OUT}/comm-bill-links.json`);
     const { bills, events } = JSON.parse(await readFile(billsPath, 'utf8'));
     const links = JSON.parse(await readFile(linksPath, 'utf8'));
     const out = bills.map((b) => buildBillTimeline(
@@ -375,6 +499,7 @@ Q4  DPOH row shape
   npm run offices          -- [--roster <json>]             validate the ministerial roster
   npm run derive:offices                                    build an office roster from the filings
   npm run resolve          -- --dpoh <csv> --comms <csv>   entity resolution + coverage report
+  npm run link             -- [--bills <json>]              citations -> session-scoped bills
   npm run timeline         -- --bills <json> --links <json>
 Sessions configured: ${SESSIONS.map((s) => `${s.parliament}-${s.session}`).join(', ')}`);
 }
