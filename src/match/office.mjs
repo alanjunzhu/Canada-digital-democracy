@@ -46,20 +46,27 @@ export function validateHoldings(rows, aliases = {}) {
     if (row.end_date && row.end_date < row.start_date) {
       return errors.push(`${at} (${row.title}): end_date precedes start_date`);
     }
+    // A derived row already carries the key it was grouped under — an
+    // institution holding is keyed by its department, which recomputing from
+    // the title ('Minister') would throw away. Curated rows have no key and
+    // get one from their title.
     const role = canonicalRole(row.title, row.institution || '', aliases);
-    if (!role.key) {
+    const key = row.office_key || role.key;
+    if (!key) {
       return errors.push(`${at}: title ${JSON.stringify(row.title)} does not canonicalize to an office key — add a portfolio alias in roles.mjs`);
     }
     holdings.push({
-      holding_id: row.holding_id || `${role.key}@${row.start_date}`.replace(/\s+/g, '-'),
+      holding_id: row.holding_id || `${key}@${row.start_date}`.replace(/\s+/g, '-'),
       person_id: row.person_id || null,
+      person_name: row.person_name || null,
       title: row.title,
       institution: row.institution || '',
       is_staff: role.kind === 'staff' ? 1 : 0,
       start_date: row.start_date,
       end_date: row.end_date || null,
-      office_key: role.key,
+      office_key: key,
       kind: role.kind,
+      source: row.source || 'curated',
     });
   });
 
@@ -73,6 +80,7 @@ export function validateHoldings(rows, aliases = {}) {
   }
   const overlaps = [];
   for (const [key, hs] of byKey) {
+    if (hs.every((h) => h.source && h.source.startsWith('observed'))) continue;
     const sorted = [...hs].sort((a, b) => a.start_date.localeCompare(b.start_date));
     for (let i = 1; i < sorted.length; i++) {
       const prev = sorted[i - 1];
@@ -120,18 +128,36 @@ export function resolveOffice(roleText, date, index = EMPTY_OFFICE_INDEX, opts =
     status: 'unmatched', office_key: role.key, office_kind: role.kind, via: role.via,
     holding_id: null, person_id: null, principal_person_id: null, office_title: null,
   };
-  if (!role.key || !index.size) return base;
+  if (!role.key) return base;
+
+  // An institution-derived key needs no roster to be an answer. 'Chief of
+  // Staff, Finance Canada' names the office outright — 296,101 of the 355,051
+  // staff rows do exactly this — and reporting 'unmatched' for those would be
+  // throwing away what the filing plainly says. The chair is known; who sat in
+  // it is a separate question the roster answers when it can.
+  const institutionOnly = () => ({
+    ...base,
+    status: 'office',
+    method: 'office-institution',
+    confidence: 0,
+    office_title: institution || role.key,
+  });
+
+  if (!index.size) return role.via === 'institution' ? institutionOnly() : base;
 
   // An institution-derived key names a department, not a minister's office, so
   // it may only match a holding's institution — never a portfolio title.
   const pool = role.via === 'institution'
     ? (index.byInstitution.get(normalizeName(role.key)) || index.byInstitution.get(normalizeName(institution)) || [])
     : (index.byKey.get(role.key) || []);
-  if (!pool.length) return base;
+  if (!pool.length) return role.via === 'institution' ? institutionOnly() : base;
 
   const covering = pool.filter((h) => covers(h, date));
   if (!covering.length) {
-    return { ...base, status: 'unmatched', reason: 'out-of-term', candidate_count: pool.length };
+    // The office exists, but nobody in the roster held it on that date.
+    return role.via === 'institution'
+      ? { ...institutionOnly(), reason: 'no-holder-on-date', candidate_count: pool.length }
+      : { ...base, status: 'unmatched', reason: 'out-of-term', candidate_count: pool.length };
   }
   if (covering.length > 1) {
     return {

@@ -169,8 +169,11 @@ export function summarize(results) {
     pct_resolved_of_named_persons: +(100 * by.resolved / personRows).toFixed(1),
     // How much of the whole file lands somewhere attributable — a person or a
     // chair. This is the number that says whether the site can be built.
+    // Attribution means 'this row lands on an office or a person'. A staff row
+    // naming Finance Canada is attributed even when no roster row says who led
+    // Finance Canada that week — the office is the unit, and the file states it.
     pct_attributed: +(100 * (by.resolved + by.office
-      + results.filter((r) => r.status === 'not_a_person' && r.holding_id).length) / total).toFixed(1),
+      + results.filter((r) => r.status === 'not_a_person' && (r.holding_id || r.office_key)).length) / total).toFixed(1),
     top_problem_strings: [...unresolvedCounts.entries()]
       .sort((a, b) => b[1] - a[1]).slice(0, 25)
       .map(([raw, n]) => ({ raw, n })),

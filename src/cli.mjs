@@ -7,6 +7,7 @@ import { fetchBills } from './fetch/fetch-bills.mjs';
 import { fetchLobbyingBulk } from './fetch/fetch-lobbying.mjs';
 import { buildPersonIndex, resolveDpoh, summarize } from './match/resolve.mjs';
 import { validateHoldings, buildOfficeIndex, summarizeOffices, EMPTY_OFFICE_INDEX } from './match/office.mjs';
+import { deriveOfficeHoldings } from './match/derive-offices.mjs';
 import { buildBillTimeline } from './match/timeline.mjs';
 import { dpohComposition, citationRate, citationRateByCommunication, filingLag, dpohRowShape } from './match/stats.mjs';
 
@@ -21,16 +22,34 @@ const OFFICE_ROSTER = 'data/overrides/office-holders.json';
 
 // Loads the hand-curated office roster. A missing or empty file is a supported
 // state: role rows then report 'unmatched' and nothing is claimed about them.
-async function loadOffices(path = OFFICE_ROSTER, { strict = false } = {}) {
+const DERIVED_OFFICES = 'data/out/derived-offices.json';
+
+async function loadOffices(path = OFFICE_ROSTER, { strict = false, derived = DERIVED_OFFICES } = {}) {
   let raw;
   try {
     raw = JSON.parse(await readFile(path, 'utf8'));
   } catch (e) {
     if (strict) throw e;
-    return { index: EMPTY_OFFICE_INDEX, errors: [], overlaps: [], holdings: [] };
+    raw = { holdings: [], aliases: {} };
   }
-  const { holdings, errors, overlaps } = validateHoldings(raw.holdings || [], raw.aliases || {});
-  return { index: buildOfficeIndex(holdings, raw.aliases || {}), holdings, errors, overlaps };
+  // Curated rows first: a real appointment date replaces an observed window
+  // rather than competing with it, so any office a human has transcribed is
+  // taken from the roster and its derived twin is dropped.
+  let derivedHoldings = [];
+  if (derived) {
+    try {
+      derivedHoldings = JSON.parse(await readFile(derived, 'utf8')).holdings || [];
+    } catch { /* none derived yet */ }
+  }
+  const curatedKeys = new Set((raw.holdings || []).map((h) => `${h.title}`.toLowerCase()));
+  const merged = [...(raw.holdings || []), ...derivedHoldings.filter((h) => !curatedKeys.has(`${h.title}`.toLowerCase()))];
+
+  const { holdings, errors, overlaps } = validateHoldings(merged, raw.aliases || {});
+  return {
+    index: buildOfficeIndex(holdings, raw.aliases || {}),
+    holdings, errors, overlaps,
+    counts: { curated: (raw.holdings || []).length, derived: merged.length - (raw.holdings || []).length },
+  };
 }
 // Which file is which was settled by `fetch-lobbying`, by reading headers.
 // Every later command reuses that answer instead of guessing at filenames.
@@ -171,9 +190,12 @@ switch (cmd) {
     report.offices = summarizeOffices(results
       .filter((r) => r.parsed.kind === 'role_only' || r.office_key)
       .map((r) => ({
-        status: r.status === 'office' ? 'office'
-          : r.status === 'ambiguous_office' ? 'ambiguous'
-            : r.holding_id ? 'resolved' : 'unmatched',
+        // 'resolved' means a person is attached; 'office' means the chair is
+        // known and the individual is not. An office_key with no holding is
+        // still an office.
+        status: r.status === 'ambiguous_office' ? 'ambiguous'
+          : r.holding_id && r.person_id ? 'resolved'
+            : r.office_key ? 'office' : 'unmatched',
         office_key: r.office_key || '',
       })));
     await write('resolution-report.json', report);
@@ -213,6 +235,48 @@ Top unmatched office keys (add an alias or a roster row for each):`);
       }
     }
     if (errors.length) process.exitCode = 1;
+    break;
+  }
+  case 'derive-offices': {
+    // Builds the office roster out of the filings themselves. See
+    // match/derive-offices.mjs for what this is and is not: observation
+    // windows, never appointment dates.
+    const identified = await identifiedFiles();
+    const commsPath = flag('comms', null) || identified.communications;
+    const dpohPath = flag('dpoh', null) || identified.dpoh;
+    if (!commsPath || !dpohPath) throw new Error('need the communications and DPOH files — run fetch:lobbying first');
+
+    const { rows: commRows } = await ingestCsv(commsPath, COMMUNICATION_COLUMNS);
+    const dateById = new Map(commRows.map((r) => [r.communication_id, isoDate(r.comm_date)]));
+    const dpohRows = normalizeDpohRows((await ingestCsv(dpohPath, DPOH_COLUMNS)).rows);
+
+    const observations = dpohRows.map((r) => ({
+      person_name: [r.dpoh_surname, r.dpoh_given].filter(Boolean).join(', '),
+      title: r.dpoh_title_raw || '',
+      institution: r.institution || '',
+      date: dateById.get(r.communication_id) || null,
+    }));
+
+    const { holdings, institution_holdings, contested, excluded, offices, skipped_titles } = deriveOfficeHoldings(observations);
+    await write('derived-offices.json', {
+      generated_at: new Date().toISOString().slice(0, 10),
+      source: 'observed',
+      // Both layers ship in one file; the institution layer is the one most
+      // staff rows actually attach to.
+      holdings: [...holdings, ...institution_holdings],
+      contested, excluded, skipped_titles,
+    });
+
+    console.log(`
+Derived ${holdings.length} portfolio holdings across ${offices} portfolios, and
+${institution_holdings.length} institution holdings (who led which department, when) from the filings.
+   contested windows (two people named in the same office at once): ${contested.length}
+   excluded as likely misfilings: ${excluded.length}
+
+These are OBSERVATION WINDOWS, not appointment dates. Sample:`);
+    for (const h of holdings.slice(0, 8)) console.log(`   ${h.office_key.padEnd(38)} ${h.person_name.padEnd(28)} ${h.start_date} .. ${h.end_date}  (${h.observations} filings)`);
+    console.log('\n   titles that name no portfolio (check none of these should have counted):');
+    for (const t of skipped_titles.slice(0, 8)) console.log(`   ${String(t.n).padStart(7)}  ${t.key}`);
     break;
   }
   case 'stats': {
@@ -309,6 +373,7 @@ Q4  DPOH row shape
   npm run fetch:bills      -- --session 45-1
   npm run stats            -- --comms <csv> --dpoh <csv>   the four questions in NOTES.md
   npm run offices          -- [--roster <json>]             validate the ministerial roster
+  npm run derive:offices                                    build an office roster from the filings
   npm run resolve          -- --dpoh <csv> --comms <csv>   entity resolution + coverage report
   npm run timeline         -- --bills <json> --links <json>
 Sessions configured: ${SESSIONS.map((s) => `${s.parliament}-${s.session}`).join(', ')}`);

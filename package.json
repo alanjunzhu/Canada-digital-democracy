@@ -12,6 +12,7 @@
     "fetch:bills": "node src/cli.mjs fetch-bills",
     "stats": "node src/cli.mjs stats",
     "offices": "node src/cli.mjs offices",
+    "derive:offices": "node src/cli.mjs derive-offices",
     "ingest:lobbying": "node src/cli.mjs ingest-lobbying",
     "resolve": "node src/cli.mjs resolve",
     "timeline": "node src/cli.mjs timeline",
