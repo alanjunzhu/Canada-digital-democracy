@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { pickResources, ckanUrl } from '../src/fetch/fetch-lobbying.mjs';
+import { pickResources, ckanUrl, classifyCsvHeaders } from '../src/fetch/fetch-lobbying.mjs';
 
 const pkg = JSON.parse(readFileSync(new URL('./fixtures/ckan-package.json', import.meta.url), 'utf8'));
 const picked = pickResources(pkg.result.resources);
@@ -39,4 +39,17 @@ test('nothing is guessed when nothing matches', () => {
 
 test('the CKAN package id is the stable handle, not a hash-pathed download link', () => {
   assert.match(ckanUrl(), /open\.canada\.ca\/data\/api\/3\/action\/package_show\?id=a34eb330-/);
+});
+
+test('files inside the archive are identified by their headers, not their names', () => {
+  // Verified live: the catalogue publishes ONE zip holding both files, so the
+  // filename cannot be trusted to say which is which.
+  assert.equal(classifyCsvHeaders(['COMLOG_ID', 'DPOH_NM', 'DPOH_TITLE_EN', 'INSTITUTION_EN']), 'dpoh');
+  assert.equal(classifyCsvHeaders(['COMLOG_ID', 'REG_ID_ENR', 'COMM_DATE', 'POSTED_DATE', 'SUBJECT_MATTER_EN']), 'communications');
+  assert.equal(classifyCsvHeaders(['README', 'Notes']), null);
+});
+
+test('the DPOH file is the one with a name column, even when both share ids', () => {
+  const shared = ['COMLOG_ID', 'REG_ID_ENR', 'COMM_DATE', 'DPOH Name'];
+  assert.equal(classifyCsvHeaders(shared), 'dpoh');
 });

@@ -64,17 +64,19 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # The download step already identified each extracted CSV by its headers;
+      # this just reads its manifest rather than guessing from filenames again.
       - name: Locate the downloaded CSVs
         id: files
         if: always()
         run: |
           ls -la data/raw || true
-          comms=$(ls data/raw/*.csv 2>/dev/null | grep -iv dpoh | grep -i comm | head -1)
-          dpoh=$(ls data/raw/*.csv 2>/dev/null | grep -i dpoh | head -1)
-          # Fall back to the names `fetch:lobbying` writes when the archive
-          # members are named something else entirely.
-          [ -z "$comms" ] && comms=$(ls data/raw/communications.csv 2>/dev/null || true)
-          [ -z "$dpoh" ] && dpoh=$(ls data/raw/dpoh.csv 2>/dev/null || true)
+          read -r comms dpoh <<<"$(node -e "
+            const fs = require('fs');
+            let m = {};
+            try { m = JSON.parse(fs.readFileSync('data/out/download-manifest.json', 'utf8')).identified || {}; } catch {}
+            process.stdout.write((m.communications || '') + ' ' + (m.dpoh || ''));
+          ")"
           echo "comms=$comms" >> "$GITHUB_OUTPUT"
           echo "dpoh=$dpoh"   >> "$GITHUB_OUTPUT"
           echo "using comms=$comms dpoh=$dpoh"

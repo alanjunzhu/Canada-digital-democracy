@@ -58,7 +58,7 @@ switch (cmd) {
     // Prints every resource the catalogue offers, so a wrong pick is visible
     // before any number is computed on the wrong file.
     const dir = flag('dir', 'data/raw');
-    const { picked, downloaded, failures, dataset_title, modified } = await fetchLobbyingBulk({ dir });
+    const { picked, downloaded, failures, identified, contents, dataset_title, modified } = await fetchLobbyingBulk({ dir });
     console.log(`\n== ${dataset_title || 'dataset'} (catalogue updated ${modified || 'unknown'})`);
     console.log('   resources offered:');
     for (const r of picked.all) console.log(`      [${String(r.format).padEnd(5)}] ${r.name}`);
@@ -66,13 +66,17 @@ switch (cmd) {
       console.log(`   ${key}: ${got.name} -> ${got.files.join(', ') || got.path} (${(got.bytes / 1e6).toFixed(1)} MB)`);
     }
     for (const f of failures) console.log(`   FAILED  ${f.key}: ${f.error}`);
-    for (const key of ['communications', 'dpoh']) {
-      if (!picked[key]) console.log(`   NOT FOUND: no resource matched '${key}'. Name it explicitly, or widen the pattern in src/fetch/fetch-lobbying.mjs.`);
+    if (contents.length) {
+      console.log('   archive contents, identified by their headers:');
+      for (const c of contents) console.log(`      ${c.kind || '(unrecognized)'}  ${c.file}\n         ${c.headers.join(' | ')}`);
     }
-    await write('download-manifest.json', { dataset_title, modified, picked: picked.all, downloaded, failures });
+    for (const key of ['communications', 'dpoh']) {
+      if (!identified[key]) console.log(`   NOT FOUND: nothing in the download looks like the '${key}' file.`);
+    }
+    await write('download-manifest.json', { dataset_title, modified, picked: picked.all, downloaded, failures, identified, contents });
     // A missing primary file is fatal to every number downstream, so it fails
     // the step — but only after the full picture has been printed.
-    if (!downloaded.communications || !downloaded.dpoh) process.exitCode = 1;
+    if (!identified.communications || !identified.dpoh) process.exitCode = 1;
     break;
   }
   case 'fetch-members': {

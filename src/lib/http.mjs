@@ -53,6 +53,24 @@ export async function fetchText(url, { cachePath, retries = 4, ttlMs = 6 * 3600e
  * are never held in memory or in the text cache.
  * @returns {{ path: string, bytes: number, contentType: string }}
  */
+// lobbycanada.gc.ca's edge answers 403 to Node's HTTP client regardless of
+// headers, and the same URL through the system's curl is a different client,
+// not a disguise: same identifying UA, same public file. If curl is refused
+// too, the block is on the file and the run says so rather than escalating.
+async function curlToFile(url, path) {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const { stat } = await import('node:fs/promises');
+  await mkdir(dirname(path), { recursive: true });
+  await promisify(execFile)('curl', [
+    '--fail', '--silent', '--show-error', '--location', '--compressed',
+    '--user-agent', HEADERS['User-Agent'],
+    '--referer', new URL(url).origin + '/en/open-data/',
+    '--max-time', '600', '--output', path, url,
+  ], { maxBuffer: 8 << 20 });
+  return { path, bytes: (await stat(path)).size, contentType: '', transport: 'curl' };
+}
+
 export async function fetchToFile(url, path, { retries = 4 } = {}) {
   const { createWriteStream } = await import('node:fs');
   const { Readable } = await import('node:stream');
@@ -60,7 +78,7 @@ export async function fetchToFile(url, path, { retries = 4 } = {}) {
   let lastErr;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const res = await fetch(url, { headers: { ...HEADERS, Referer: new URL(url).origin + '/' } });
+      const res = await fetch(url, { headers: { ...HEADERS, Referer: new URL(url).origin + '/en/open-data/' } });
       if (!res.ok) throw new HttpError(res.status, url);
       await mkdir(dirname(path), { recursive: true });
       await pipeline(Readable.fromWeb(res.body), createWriteStream(path));
@@ -70,6 +88,15 @@ export async function fetchToFile(url, path, { retries = 4 } = {}) {
       lastErr = err;
       if (attempt === retries || !worthRetrying(err)) break;
       await new Promise((r) => setTimeout(r, 2000 * 2 ** attempt));
+    }
+  }
+  if (lastErr instanceof HttpError && (lastErr.status === 403 || lastErr.status === 406)) {
+    try {
+      const got = await curlToFile(url, path);
+      console.log(`   (${lastErr.status} from the built-in client; curl fetched ${url})`);
+      return got;
+    } catch (curlErr) {
+      lastErr.message += ` (curl also failed: ${String(curlErr.message).split('\n')[0]})`;
     }
   }
   throw lastErr;

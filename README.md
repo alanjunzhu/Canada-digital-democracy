@@ -48,20 +48,40 @@ happened while nobody could see it.
 | Office resolution (which chair, held by whom, on the date) | **verified** against fixtures |
 | **The office roster itself** (`data/overrides/office-holders.json`) | **empty** — hand-curated, see below |
 | Four-question stats report (`npm run stats`) | **verified** against fixtures |
-| **OCL bulk CSV column names** | **UNVERIFIED** — see below |
-| LEGISinfo + ourcommons XML field names | **partly unverified** — parsers are tolerant, confirm on first run |
+| Member roster from ourcommons.ca | **verified live in CI** — 346 members returned for the 45th |
+| Bill list from LEGISinfo | **verified live in CI** — 185 bills returned for 45-1 |
+| Bill stage dates from LEGISinfo | **fixed against the live shape**, re-verified each CI run |
+| **OCL bulk CSV column names** | **UNVERIFIED** — the download is what CI is for; see below |
 
-The build environment blocked egress to `lobbycanada.gc.ca`, `open.canada.ca`,
-`parl.ca` and `ourcommons.ca`, so no live file was ever read. Every unverified
-piece is written as an **alias list** in `src/config/sources.mjs` and validated
-at ingest: a mismatch raises a hard error naming the real headers, instead of
+The environment this was written in blocks egress to `lobbycanada.gc.ca`,
+`open.canada.ca`, `parl.ca` and `ourcommons.ca`. Every unverified piece is
+written as an **alias list** in `src/config/sources.mjs` and validated at
+ingest: a mismatch raises a hard error naming the real headers, instead of
 silently producing a table of `undefined` that looks like sparse data.
 
-## First run
+## Where this runs
+
+**On GitHub's runners, not on a laptop.** `.github/workflows/pipeline.yml`
+downloads the sources, probes the real column headers, answers the four
+questions in `NOTES.md`, and reports resolution coverage — writing all of it
+into the run's job summary, with `data/out/*.json` and the logs attached as
+artifacts. Trigger it from the Actions tab, or let the monthly schedule run it
+(the OCL republishes the bulk files monthly; anything more frequent just
+re-downloads the same file).
+
+That is also the only place this code has ever met real data, which is why the
+status table above distinguishes *verified against fixtures* from *verified
+live in CI*.
+
+## Running it locally instead
 
 ```bash
-# 1. Download the Monthly Communication Reports bulk files (primary + DPOH
-#    secondary) from https://lobbycanada.gc.ca/en/open-data/ into data/raw/
+# Fetch the bulk files through the Open Government catalogue. The OCL portal's
+# own download links are hash-pathed and rotate every publication, so the
+# catalogue's package id is the stable handle.
+npm run fetch:lobbying
+
+# Then confirm the column mapping against the real headers.
 npm run probe -- --comms data/raw/communications.csv --dpoh data/raw/communication_dpoh.csv
 ```
 
