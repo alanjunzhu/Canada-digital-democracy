@@ -101,6 +101,25 @@ async function expand(path, dir) {
 }
 
 /**
+ * Expands every archive already sitting in the directory.
+ *
+ * Verified live: lobbycanada.gc.ca refuses a GitHub runner outright — node
+ * fetch, curl with either user agent, and wget all get 403 — so the download
+ * cannot be made to work from CI by changing headers. The supported way
+ * through is to put the published zip somewhere the runner can reach (a
+ * release asset on this repo) and drop it in `dir` before this runs. A file
+ * already present is therefore not an error case, it is the mirror path.
+ */
+async function expandExisting(dir) {
+  const { readdir } = await import('node:fs/promises');
+  let names = [];
+  try { names = await readdir(dir); } catch { return []; }
+  const out = [];
+  for (const n of names.filter((n) => /\.zip$/i.test(n))) out.push(...await expand(`${dir}/${n}`, dir));
+  return out;
+}
+
+/**
  * @param overrides  { communications?: url, dpoh?: url, dictionary?: url }
  *   lobbycanada.gc.ca's edge refuses some clients outright. When it refuses the
  *   runner, the file can be put somewhere the runner CAN reach — a release
@@ -136,17 +155,21 @@ export async function fetchLobbyingBulk({ dir = 'data/raw', packageId = CKAN_PAC
     }
   }
   // The zip's members are named by whoever packed it, so every extracted CSV
-  // is identified by its own headers rather than by its filename.
+  // is identified by its own headers rather than by its filename. Archives
+  // already in the directory (the mirror path) are expanded and read the same
+  // way as anything downloaded here — there is one code path, not two.
+  const candidates = new Set([
+    ...Object.values(downloaded).flatMap((got) => got.files || []),
+    ...await expandExisting(dir),
+  ]);
   const identified = {};
   const contents = [];
-  for (const got of Object.values(downloaded)) {
-    for (const file of got.files || []) {
-      if (!/\.csv$/i.test(file)) continue;
-      const headers = await sniffHeaders(file);
-      const kind = classifyCsvHeaders(headers);
-      contents.push({ file, kind, headers });
-      if (kind && !identified[kind]) identified[kind] = file;
-    }
+  for (const file of candidates) {
+    if (!/\.csv$/i.test(file)) continue;
+    const headers = await sniffHeaders(file);
+    const kind = classifyCsvHeaders(headers);
+    contents.push({ file, kind, headers });
+    if (kind && !identified[kind]) identified[kind] = file;
   }
 
   return {

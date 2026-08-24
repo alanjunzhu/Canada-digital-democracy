@@ -73,6 +73,32 @@ That is also the only place this code has ever met real data, which is why the
 status table above distinguishes *verified against fixtures* from *verified
 live in CI*.
 
+### The one thing CI cannot fetch
+
+`lobbycanada.gc.ca` refuses GitHub's runners outright. Not a header problem —
+the run proves it every time it fails, by re-requesting the same URL with four
+different clients:
+
+```
+node-fetch      -> 403
+curl            -> 403
+curl-default-ua -> 403
+wget            -> (refused)
+```
+
+Everything else (the Open Government catalogue, LEGISinfo, ourcommons.ca)
+answers the runner normally; it is only the OCL's own media host, which appears
+to refuse datacentre traffic. No user agent fixes that, and this project is not
+going to pretend to be a browser to get around it.
+
+**The way through, in ~2 minutes a month:** download the zip from
+<https://lobbycanada.gc.ca/en/open-data/> in a normal browser and attach it to
+a release on this repo tagged `ocl-data`. Every run pulls that asset before it
+tries the live download, unzips it, and identifies the files by their headers —
+so nothing else about the pipeline changes, and the day the host starts serving
+runners the mirror simply stops being used. Alternatively, set the repository
+variable `OCL_ZIP_URL` to any URL the runner can reach.
+
 ## Running it locally instead
 
 ```bash

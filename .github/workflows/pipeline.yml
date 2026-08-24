@@ -55,6 +55,23 @@ jobs:
         run: npm run offices 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
 
       # ---------------------------------------------------------------- data
+      # lobbycanada.gc.ca refuses this runner outright (403 to node fetch, curl
+      # with either user agent, and wget), so the published zip has to reach CI
+      # some other way. Attach it to a release tagged `ocl-data` on this repo
+      # and it is used from here on; the direct download is still attempted
+      # first, so the mirror stops being needed the day the host serves runners.
+      - name: Use the mirrored archive, if one is published
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p data/raw
+          if gh release download ocl-data --pattern '*.zip' --dir data/raw --clobber; then
+            echo "mirror: $(ls -la data/raw)"
+          else
+            echo "no 'ocl-data' release attached to this repo — see the README"
+          fi
+
       - name: Download the OCL bulk files
         id: download
         continue-on-error: true       # a 403 is a finding, not a reason to stop the run

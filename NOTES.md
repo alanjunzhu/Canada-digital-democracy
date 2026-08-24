@@ -92,6 +92,26 @@ roster rows in that frequency order. French portfolio phrases that appear there
 get an alias (built-ins in `roles.mjs`, data-specific ones in the roster file's
 `aliases`) rather than a looser match.
 
+## What the live runs settled
+
+Running the pipeline on a GitHub runner (`.github/workflows/pipeline.yml`)
+answered several things that fixtures could not:
+
+- **ourcommons.ca**: 346 members for the 45th Parliament. The XML tag names in
+  `fetch-members.mjs` are correct.
+- **LEGISinfo**: 185 bills for 45-1. The URL and the top-level field names are
+  correct; the *stage* shape was not — the first run produced 0 stage events.
+  LEGISinfo carries stages both as scalar fields whose key names the stage
+  (`PassedHouseFirstReadingDateTime`) and as nested stage objects. Reading both
+  gives 661 stage events for the same 185 bills.
+- **The OCL catalogue** publishes exactly two resources for Monthly
+  Communication Reports: one zip and an XLS data dictionary. There is no
+  separate DPOH resource — the primary and secondary files are both inside the
+  zip, which is why archive members are identified by their headers.
+- **The OCL media host refuses CI runners** (403 to every client tried). The
+  four questions below therefore still need the zip mirrored to a release on
+  this repo, or `OCL_ZIP_URL` pointed somewhere reachable. See the README.
+
 ## Not yet built
 
 - Deputy-minister and departmental staff offices are keyed off the department
