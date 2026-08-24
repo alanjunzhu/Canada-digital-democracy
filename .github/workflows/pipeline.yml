@@ -237,11 +237,49 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload the site for Pages
+      # The site is always uploaded as an ordinary artifact, so a run that
+      # cannot publish still hands you the built site.
+      - name: Upload the site
         if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: site
+          if-no-files-found: warn
+          retention-days: 30
+
+      # Publishing is best-effort: GitHub Pages has to be enabled on the repo
+      # (Settings -> Pages -> Source: GitHub Actions), and until it is, this
+      # step fails. That must never fail the data run, which is the part that
+      # matters and had already finished by this point.
+      - name: Configure Pages
+        id: pages
+        if: always()
+        continue-on-error: true
+        uses: actions/configure-pages@v5
+
+      - name: Upload the site for Pages
+        id: pages_artifact
+        if: always() && steps.pages.outcome == 'success'
+        continue-on-error: true
         uses: actions/upload-pages-artifact@v3
         with:
           path: site
+
+      - name: Say whether the site can publish
+        if: always()
+        run: |
+          if [ "${{ steps.pages_artifact.outcome }}" = "success" ]; then
+            echo "Pages artifact uploaded; the publish job will deploy it." | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo '## Site built but not published'
+              echo 'GitHub Pages is not enabled for this repository, so the run could not'
+              echo 'hand the site to the Pages deployer. Enable it once at:'
+              echo 'Settings -> Pages -> Build and deployment -> Source: GitHub Actions.'
+              echo 'The built site is attached to this run as the `site` artifact meanwhile.'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       # Reads the resolution report's failures back and asks each candidate
       # roster endpoint whether it knows those people. Answers 'is the roster
@@ -316,7 +354,10 @@ jobs:
   # site, and a successful one always publishes the same artifact the run made.
   publish:
     needs: run
-    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    # The data steps run before the site is built, so a failure in them must not
+    # be the reason a good site goes unpublished — and vice versa.
+    if: always() && needs.run.result != 'cancelled'
+      && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
       pages: write
@@ -326,4 +367,5 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - id: deploy
+        continue-on-error: true
         uses: actions/deploy-pages@v4
