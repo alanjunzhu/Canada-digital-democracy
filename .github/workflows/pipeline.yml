@@ -23,7 +23,8 @@ on:
   schedule:
     - cron: '17 9 5 * *'      # the 5th of each month, after the OCL publishes
   push:
-    branches: ['claude/**']
+    # main publishes the site; work branches run the pipeline without publishing.
+    branches: ['main', 'claude/**']
     paths: ['src/**', '.github/workflows/pipeline.yml', 'data/overrides/**']
 
 permissions:
