@@ -68,14 +68,21 @@ export async function fetchLobbyingBulk({ dir = 'data/raw', packageId = CKAN_PAC
   if (!pkg.success) throw new Error(`CKAN package_show failed for ${packageId}`);
   const picked = pickResources(pkg.result?.resources || []);
 
+  // One resource failing must not hide the others: a 403 on the primary file
+  // is itself a finding, and the dictionary is worth having either way.
   const downloaded = {};
+  const failures = [];
   for (const key of ['communications', 'dpoh', 'dictionary']) {
     const res = picked[key];
     if (!res) continue;
     const ext = /\.zip(\?|$)/i.test(res.url) ? 'zip' : /\.(xlsx?|ods)(\?|$)/i.test(res.url) ? 'xlsx' : 'csv';
     const target = `${dir}/${key}.${ext}`;
-    const got = await fetchToFile(res.url, target);
-    downloaded[key] = { ...got, name: res.name, source_url: res.url, files: await expand(target, dir) };
+    try {
+      const got = await fetchToFile(res.url, target);
+      downloaded[key] = { ...got, name: res.name, source_url: res.url, files: await expand(target, dir) };
+    } catch (err) {
+      failures.push({ key, url: res.url, error: err.message, status: err.status ?? null });
+    }
   }
-  return { picked, downloaded, dataset_title: pkg.result?.title || '', modified: pkg.result?.metadata_modified || '' };
+  return { picked, downloaded, failures, dataset_title: pkg.result?.title || '', modified: pkg.result?.metadata_modified || '' };
 }

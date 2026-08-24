@@ -58,17 +58,21 @@ switch (cmd) {
     // Prints every resource the catalogue offers, so a wrong pick is visible
     // before any number is computed on the wrong file.
     const dir = flag('dir', 'data/raw');
-    const { picked, downloaded, dataset_title, modified } = await fetchLobbyingBulk({ dir });
+    const { picked, downloaded, failures, dataset_title, modified } = await fetchLobbyingBulk({ dir });
     console.log(`\n== ${dataset_title || 'dataset'} (catalogue updated ${modified || 'unknown'})`);
     console.log('   resources offered:');
     for (const r of picked.all) console.log(`      [${String(r.format).padEnd(5)}] ${r.name}`);
     for (const [key, got] of Object.entries(downloaded)) {
       console.log(`   ${key}: ${got.name} -> ${got.files.join(', ') || got.path} (${(got.bytes / 1e6).toFixed(1)} MB)`);
     }
+    for (const f of failures) console.log(`   FAILED  ${f.key}: ${f.error}`);
     for (const key of ['communications', 'dpoh']) {
-      if (!picked[key]) console.log(`   NOT FOUND: no resource matched '${key}'. Name it explicitly with --${key} <url>, or widen the pattern in src/fetch/fetch-lobbying.mjs.`);
+      if (!picked[key]) console.log(`   NOT FOUND: no resource matched '${key}'. Name it explicitly, or widen the pattern in src/fetch/fetch-lobbying.mjs.`);
     }
-    await write('download-manifest.json', { dataset_title, modified, picked: picked.all, downloaded });
+    await write('download-manifest.json', { dataset_title, modified, picked: picked.all, downloaded, failures });
+    // A missing primary file is fatal to every number downstream, so it fails
+    // the step — but only after the full picture has been printed.
+    if (!downloaded.communications || !downloaded.dpoh) process.exitCode = 1;
     break;
   }
   case 'fetch-members': {
@@ -80,9 +84,17 @@ switch (cmd) {
   }
   case 'fetch-bills': {
     const ps = flag('session', '45-1');
-    const { bills, events } = await fetchBills(ps);
+    const { bills, events, shape } = await fetchBills(ps);
     await write(`bills-${ps}.json`, { bills, events });
     console.log(`${bills.length} bills, ${events.length} stage events`);
+    if (!events.length && shape) {
+      // Do not let this pass quietly: a timeline with no stage dates is not a
+      // timeline. Dump what LEGISinfo actually published so the extractor can
+      // be fixed against the real shape rather than a guess.
+      await write(`legisinfo-shape-${ps}.json`, shape);
+      console.log('   NO STAGE EVENTS — see data/out/legisinfo-shape-' + ps + '.json for the published shape.');
+      console.log('   top-level keys: ' + Object.keys(shape).join(', '));
+    }
     break;
   }
   case 'resolve': {

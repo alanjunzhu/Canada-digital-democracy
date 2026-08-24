@@ -40,7 +40,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       # Fixture-verified logic first: if the resolver is broken there is no
       # point spending ten minutes downloading to find out.
@@ -53,6 +53,7 @@ jobs:
       # ---------------------------------------------------------------- data
       - name: Download the OCL bulk files
         id: download
+        continue-on-error: true       # a 403 is a finding, not a reason to stop the run
         run: |
           set -o pipefail
           npm run fetch:lobbying 2>&1 | tee download.log
@@ -65,6 +66,7 @@ jobs:
 
       - name: Locate the downloaded CSVs
         id: files
+        if: always()
         run: |
           ls -la data/raw || true
           comms=$(ls data/raw/*.csv 2>/dev/null | grep -iv dpoh | grep -i comm | head -1)
@@ -80,7 +82,7 @@ jobs:
       # THE step. Every unverified column name in src/config/sources.mjs is
       # settled here, and the answer is printed whether it matches or not.
       - name: Probe the real column headers
-        if: always()
+        if: always() && steps.files.outputs.comms != '' && steps.files.outputs.dpoh != ''
         run: |
           set -o pipefail
           npm run probe -- --comms "${{ steps.files.outputs.comms }}" --dpoh "${{ steps.files.outputs.dpoh }}" 2>&1 | tee probe.log
@@ -93,7 +95,7 @@ jobs:
 
       # ------------------------------------------------------- the questions
       - name: The four questions
-        if: always()
+        if: always() && steps.files.outputs.comms != '' && steps.files.outputs.dpoh != ''
         continue-on-error: true
         run: |
           set -o pipefail
@@ -109,11 +111,30 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
-          npm run fetch:members -- --parliament "$PARLIAMENT"
-          npm run fetch:bills   -- --session "$SESSION"
+          set -o pipefail
+          npm run fetch:members -- --parliament "$PARLIAMENT" 2>&1 | tee members.log
+          npm run fetch:bills   -- --session "$SESSION"       2>&1 | tee bills.log
+          {
+            echo '## Parliament'
+            echo '```'
+            cat members.log bills.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # A run that downloaded nothing must not look like a run that worked.
+      - name: Report a missing download
+        if: always() && (steps.files.outputs.comms == '' || steps.files.outputs.dpoh == '')
+        run: |
+          {
+            echo '## No lobbying data this run'
+            echo 'The OCL bulk files did not download, so the four questions and the'
+            echo 'resolution coverage were skipped. See the Sources section above for'
+            echo 'the resource list and the exact failure.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
 
       - name: Entity resolution coverage
-        if: always()
+        if: always() && steps.files.outputs.comms != '' && steps.files.outputs.dpoh != ''
         continue-on-error: true
         run: |
           set -o pipefail
