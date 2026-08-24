@@ -1,0 +1,11 @@
+[
+  { "bill_id": "45-1/C-5", "number": "C-5", "short_title": "One Canadian Economy Act",
+    "total_linked_communications": 282,
+    "stages": [
+      { "stage": "first_reading", "event_date": "2025-06-06", "window_days": 30, "communications": 12,
+        "distinct_clients": 5, "median_filing_lag_days": 27,
+        "clients": [{ "client": "Business Council of Canada", "count": 4, "officials": ["Doe, Jane — Chief of Staff"] }] },
+      { "stage": "royal_assent", "event_date": "2025-06-26", "window_days": 30, "communications": 0,
+        "distinct_clients": 0, "median_filing_lag_days": null, "clients": [] }
+    ] }
+]

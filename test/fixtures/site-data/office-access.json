@@ -1,0 +1,5 @@
+[
+  { "office_key": "finance canada fin", "label": "Finance Canada (FIN)", "rows": 20, "communications": 18,
+    "first_date": "2008-07-03", "last_date": "2026-08-14", "median_filing_lag_days": 26,
+    "top_clients": [{ "client": "Canadian Bankers Association", "n": 9 }, { "client": "<script>alert(1)</script>", "n": 2 }] }
+]

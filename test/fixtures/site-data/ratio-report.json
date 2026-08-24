@@ -1,0 +1,7 @@
+{
+  "generated_at": "2026-08-24",
+  "q1_who_is_named": { "total_dpoh_rows": 1000, "pct_naming_a_sitting_member": 26.4 },
+  "q2_citation_rate": { "pct_of_all_communications": 0.64, "pct_with_citation": 3.4, "distinct_bills_cited": 130 },
+  "q3_filing_lag": { "median_days": 26, "p90_days": 42 },
+  "q4_row_shape": { "mean_dpoh_rows_per_communication": 1.53 }
+}

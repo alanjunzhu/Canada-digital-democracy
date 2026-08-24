@@ -81,6 +81,15 @@ const NICKNAMES = [
   ['andrew', 'andy', 'drew'], ['matthew', 'matt'], ['nicholas', 'nick'],
   ['alexandre', 'alex', 'alexander'], ['francois', 'frank'], ['jean', 'john'],
   ['genevieve', 'gen'], ['veronique', 'vero'], ['gabriel', 'gabe'],
+  // Added from the real failure list: 'Brown, Gord' failed 184 times because
+  // Gordon was not known to shorten to Gord.
+  ['gordon', 'gord', 'gordie'], ['beverley', 'beverly', 'bev'], ['kimberly', 'kimberley', 'kim'],
+  ['catherine', 'cathy', 'cate', 'katie'], ['kathleen', 'kathy'], ['donald', 'don'],
+  ['ronald', 'ron'], ['kenneth', 'ken'], ['gerald', 'gerry', 'jerry'], ['terrance', 'terence', 'terry'],
+  ['lawrence', 'larry'], ['raymond', 'ray'], ['frederick', 'frederic', 'fred'],
+  ['philippe', 'philip', 'phillip', 'phil'], ['alexandra', 'alex'], ['samuel', 'sam'],
+  ['benjamin', 'ben'], ['timothy', 'tim'], ['gregory', 'greg'], ['jeffrey', 'geoffrey', 'jeff'],
+  ['jonathan', 'jon'], ['maxime', 'max'], ['mathieu', 'matthieu', 'matt'], ['sebastien', 'seb'],
 ];
 const NICK_INDEX = new Map();
 for (const group of NICKNAMES) for (const n of group) NICK_INDEX.set(n, group[0]);
@@ -104,6 +113,16 @@ export function givenNameMatch(a, b) {
   // Compound given names: 'jean pierre' vs 'jeanpierre' vs 'jean'
   if (na.join('') === nb.join('')) return 'exact';
   if (na.includes(fb) || nb.includes(fa)) return 'nickname';
+
+  // A short form nobody listed: 'Gord' for 'Gordon', 'Kath' for 'Katherine'.
+  // Four characters minimum, because three-letter prefixes collide across
+  // genuinely different names ('Mar' for Marc and Marcel and Marie). When this
+  // rule is wrong AND the real person is also in the roster, both score the
+  // same and the tie is reported ambiguous rather than guessed — which is the
+  // reason it is safe to have at all.
+  const [shortName, longName] = fa.length <= fb.length ? [fa, fb] : [fb, fa];
+  if (shortName.length >= 4 && longName.startsWith(shortName)) return 'short-form';
+
   return 'none';
 }
 

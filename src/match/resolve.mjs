@@ -41,6 +41,7 @@ function scoreCandidate(parsed, term, { typo = false } = {}) {
   const gm = parsed.given ? givenNameMatch(parsed.given, term.given_name) : 'none';
   if (gm === 'exact') { score += 0.4; reasons.push('given'); }
   else if (gm === 'nickname') { score += 0.3; reasons.push('given-nickname'); }
+  else if (gm === 'short-form') { score += 0.25; reasons.push('given-short-form'); }
   else if (gm === 'initial') { score += 0.15; reasons.push('given-initial'); }
   else if (parsed.given) { score -= 0.35; reasons.push('given-conflict'); }
   else reasons.push('no-given');

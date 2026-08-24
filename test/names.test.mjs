@@ -60,3 +60,13 @@ test('post-nominals inside the given-name column do not split a person in two', 
   assert.equal(splitPersonName('Flaherty, P.C., M.P., The Honourable Jim').given, 'Jim');
   assert.equal(splitPersonName('Flaherty, P.C., M.P., The Honourable Jim').surname, 'Flaherty');
 });
+
+test('a shortened given name matches the long one', () => {
+  // 'Brown, Gord' failed 184 times in the real file: Gordon was not known to
+  // shorten to Gord.
+  assert.equal(givenNameMatch('Gord', 'Gordon'), 'nickname');
+  assert.equal(givenNameMatch('Kim', 'Kimberly'), 'nickname');
+  assert.equal(givenNameMatch('Kath', 'Katherine'), 'short-form');   // unlisted, by prefix
+  assert.equal(givenNameMatch('Mar', 'Marcel'), 'none');             // three letters is too few
+  assert.equal(givenNameMatch('Steve', 'Stephanie'), 'none');
+});
