@@ -202,6 +202,42 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+      # Last, so the numbers are the last thing in the log rather than buried
+      # under two artifact uploads. This is the run's actual output.
+      - name: Headline numbers
+        if: always()
+        run: |
+          node -e "
+            const fs = require('fs');
+            const read = (f) => { try { return JSON.parse(fs.readFileSync('data/out/' + f, 'utf8')); } catch { return null; } };
+            const r = read('ratio-report.json');
+            const c = read('resolution-report.json');
+            if (r) {
+              console.log('Q1 names a sitting member : ' + r.q1_who_is_named.pct_naming_a_sitting_member + '%  of ' + r.q1_who_is_named.total_dpoh_rows + ' DPOH rows');
+              console.log('Q2 cite a bill (all comms): ' + r.q2_citation_rate.pct_of_all_communications + '%  (' + r.q2_citation_rate.pct_with_citation + '% of those with subject text)');
+              console.log('Q3 filing lag median      : ' + r.q3_filing_lag.median_days + ' days  (p90 ' + r.q3_filing_lag.p90_days + ')');
+              console.log('Q4 rows per communication : ' + r.q4_row_shape.mean_dpoh_rows_per_communication);
+            }
+            if (c) {
+              console.log('');
+              console.log('resolved     ' + c.resolved + '   (' + c.pct_resolved_of_named_persons + '% of named-person rows)');
+              console.log('ambiguous    ' + c.ambiguous);
+              console.log('unresolved   ' + c.unresolved);
+              console.log('not_a_person ' + c.not_a_person + '   (staff, senators)');
+              console.log('office       ' + c.office + '   attributed to a chair');
+              console.log('attributed   ' + c.pct_attributed + '% of all rows land somewhere');
+              console.log('');
+              console.log('top unresolved strings:');
+              for (const t of (c.top_problem_strings || []).slice(0, 12)) console.log('  ' + String(t.n).padStart(6) + '  ' + t.raw);
+            }
+          " | tee headline.log
+          {
+            echo '## Headline'
+            echo '```'
+            cat headline.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       # The data dictionary is the artefact that settles the column question
       # for good, so it is kept separately from the reports.
       - name: Upload the OCL data dictionary
