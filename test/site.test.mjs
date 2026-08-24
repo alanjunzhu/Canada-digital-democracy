@@ -19,26 +19,29 @@ const page = (p) => readFile(join(outDir, p), 'utf8');
 test('both languages are built, and neither is a copy of the other', async () => {
   const en = await page('en/index.html');
   const fr = await page('fr/index.html');
-  assert.match(en, /Who was in the room/);
-  assert.match(fr, /Qui était dans la pièce/);
-  assert.doesNotMatch(fr, /Who was in the room/);
+  assert.match(en, /how long before the rest of us find out/);
+  assert.match(fr, /combien de temps avant que nous le sachions/);
+  assert.doesNotMatch(fr, /how long before/);
 });
 
 test('a bill page renders its stages, including the empty one', async () => {
   const p = await page('en/bills/45-1-c-5.html');
   assert.match(p, /C-5/);
   assert.match(p, /One Canadian Economy Act/);
-  assert.match(p, /first reading/);
+  // Plain names, not '1R' and 'RA': a reader who has never heard of a
+  // 'reading' has to be able to follow the page.
+  assert.match(p, /Introduced/);
   assert.match(p, /2025-06-06/);
   assert.match(p, /Business Council of Canada/);
+  assert.doesNotMatch(p, />1R</);
   // A stage with no lobbying in its window is still shown: absence is a fact.
-  assert.match(p, /royal assent/);
+  assert.match(p, /Became law/);
 });
 
 test('an office page carries the observation-window caveat, not an appointment claim', async () => {
   const p = await page('en/offices/finance-canada-fin.html');
   assert.match(p, /Flaherty, Jim/);
-  assert.match(p, /observation windows/);
+  assert.match(p, /not their official start and end dates/);
   assert.doesNotMatch(p, /appointed on/i);
 });
 
@@ -63,30 +66,28 @@ test('the root page offers a language choice rather than defaulting to English',
   assert.match(p, /fr\/index\.html/);
 });
 
-test('a bill page names the officials who were in the room', () => {
-  // The whole point of the join: not just that a client lobbied before a
+test('a bill page names who was met, in plain words', () => {
+  // The whole point of the join: not just that someone lobbied before a
   // stage, but who they met.
   return page('en/bills/45-1-c-5.html').then((p) => {
-    assert.match(p, /Officials named/);
+    assert.match(p, /Who they met/);
     assert.match(p, /Doe, Jane — Chief of Staff/);
   });
 });
 
-test('the access timeline draws a line per meeting and marks the late ones', async () => {
+test('the chart counts meetings per month and separates the still-private ones', async () => {
   const p = await page('en/bills/45-1-c-5.html');
-  // Three links in the fixture, so three bars.
-  assert.equal([...p.matchAll(/<g class="bar">/g)].length, 3);
-  // Link 1 (2025-05-20 → 2025-06-15) spans first reading on 2025-06-06, and
-  // link 3 (2025-06-20 → 2025-07-30) spans royal assent on 2025-06-26. Both
-  // are marked with the triangle, so the meaning never rests on colour alone.
-  assert.equal([...p.matchAll(/<path d="M [\d.]+ [\d.]+ l 4 8 l -8 0 z"/g)].length, 2);
-  assert.match(p, /still not on the public record/);
+  // Three meetings across May, June and June — so bars for the months that
+  // have any, and a stacked segment for the two that were still private when
+  // the bill next moved.
+  assert.ok([...p.matchAll(/<g class="bar">/g)].length >= 2);
+  assert.match(p, /<strong>2 of 3<\/strong> meetings about this bill were still not public/);
 });
 
-test('the timeline marks stages and stays inside its viewBox', async () => {
+test('the chart marks the bill steps and stays inside its viewBox', async () => {
   const p = await page('en/bills/45-1-c-5.html');
-  assert.match(p, />1R</);
-  assert.match(p, />RA</);
+  assert.match(p, />Introduced</);
+  assert.match(p, />Became law</);
   const [, w, h] = p.match(/viewBox="0 0 (\d+) (\d+)"/).map(Number);
   const xs = [...p.matchAll(/cx="([\d.]+)"/g)].map((m) => Number(m[1]));
   const ys = [...p.matchAll(/cy="([\d.]+)"/g)].map((m) => Number(m[1]));
@@ -104,7 +105,7 @@ test('the chart has an accessible twin: a table with the same dates', async () =
 
 test('the lag histogram renders on the home page', async () => {
   const p = await page('en/index.html');
-  assert.match(p, /How long filings take to become public/);
+  assert.match(p, /How long a meeting stays private/);
   assert.match(p, /<rect/);
 });
 
@@ -122,4 +123,56 @@ test('no colour is hard-coded outside the token blocks', async () => {
   const componentRules = css.split(/:root[^{]*\{[^}]*\}/).join('');
   const strayHex = componentRules.match(/#[0-9a-f]{3,6}\b/gi) || [];
   assert.deepEqual(strayHex, [], `hard-coded colours outside :root: ${strayHex.join(', ')}`);
+});
+
+test('every internal link points at a file that exists', async () => {
+  // The nav was broken on every page: one variable was being used both for the
+  // path to the stylesheet (site root) and for the nav links (language root),
+  // so 'Offices' pointed at /offices/ instead of /en/offices/.
+  const { readdir } = await import('node:fs/promises');
+  const { existsSync } = await import('node:fs');
+  const { dirname, resolve } = await import('node:path');
+
+  const pages = (await readdir(outDir, { recursive: true }))
+    .filter((f) => f.endsWith('.html'));
+  const broken = [];
+  for (const rel of pages) {
+    const file = join(outDir, rel);
+    const html = await readFile(file, 'utf8');
+    for (const m of html.matchAll(/(?:href|src)="([^"#:]+)"/g)) {
+      const target = resolve(dirname(file), m[1]);
+      if (!existsSync(target)) broken.push(`${rel} -> ${m[1]}`);
+    }
+  }
+  assert.deepEqual(broken, [], `broken links:\n${broken.join('\n')}`);
+});
+
+test('the home page explains what lobbying is before showing any number', async () => {
+  const p = await page('en/index.html');
+  const explainerAt = p.indexOf('What is this?');
+  const firstNumberAt = p.indexOf('class="n"');
+  assert.ok(explainerAt > -1, 'the explainer exists');
+  assert.ok(explainerAt < firstNumberAt, 'and it comes before the first statistic');
+  assert.match(p, /hire people called lobbyists/);
+});
+
+test('the offices index says what an office is, since the people rotate', async () => {
+  const p = await page('en/offices/index.html');
+  assert.match(p, /What counts as an .office.\?/);
+  assert.match(p, /ministers are shuffled, MPs lose elections/);
+});
+
+test('no page uses parliamentary jargon without explaining it', async () => {
+  const p = await page('en/index.html');
+  for (const jargon of ['DPOH', 'designated public office holder', 'first reading', 'royal assent']) {
+    assert.ok(!p.toLowerCase().includes(jargon.toLowerCase()), `home page should not say '${jargon}'`);
+  }
+});
+
+test('the explainer counts come from the data, not from a typed sentence', async () => {
+  const p = await page('en/index.html');
+  // The fixture says 1,000 communications; a hard-coded number would survive
+  // here and go stale the next time the OCL publishes.
+  assert.match(p, /1,000 of them/);
+  assert.doesNotMatch(p, /380,400/);
 });

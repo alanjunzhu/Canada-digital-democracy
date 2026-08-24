@@ -9,7 +9,7 @@ import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { STRINGS, LANGS, UNTRANSLATED } from './strings.mjs';
 import { layout, esc, slug, num, pct, date, CSS } from './render.mjs';
-import { accessTimeline, lagHistogram, yearlySparkline, stageReachedWhileUnpublished } from './charts.mjs';
+import { meetingsOverTime, lagHistogram, yearlySparkline, stageReachedWhileUnpublished, stageName } from './charts.mjs';
 
 const read = async (dir, name) => {
   try { return JSON.parse(await readFile(`${dir}/${name}`, 'utf8')); } catch { return null; }
@@ -20,6 +20,14 @@ const put = async (path, html) => {
 };
 
 function homePage({ lang, t, ratio, resolution, offices, citations, generated }) {
+  // The counts in the explainer come from the data, never from a sentence
+  // somebody typed: a hard-coded '380,400' is a lie the moment the OCL
+  // publishes again.
+  const totalMeetings = ratio?.q2_citation_rate?.communications_in_dataset;
+  const since = (offices || []).reduce((a, o) => (o.first_date && (!a || o.first_date < a) ? o.first_date : a), null);
+  const explainer = t.explainer
+    .replace('{count}', totalMeetings ? num(totalMeetings, lang) : '—')
+    .replace('{since}', since ? since.slice(0, 4) : '2008');
   const q1 = ratio?.q1_who_is_named;
   const q2 = ratio?.q2_citation_rate;
   const q3 = ratio?.q3_filing_lag;
@@ -39,14 +47,18 @@ function homePage({ lang, t, ratio, resolution, offices, citations, generated })
   return layout({
     lang, t, generated, depth: 1, title: t.tagline,
     body: `<h1>${esc(t.tagline)}</h1>
-<p class="lede">${esc(t.offices_intro)}</p>
+<div class="explainer">
+  <h2>${esc(t.what_is_this)}</h2>
+  <p>${esc(explainer)}</p>
+  <p>${esc(t.explainer_2)}</p>
+</div>
 
 <h2>${esc(t.findings)}</h2>
 <div class="findings">
   ${finding(pct(q1?.pct_naming_a_sitting_member), t.finding_member, t.finding_member_note)}
   ${finding(pct(q2?.pct_of_all_communications), t.finding_citation, t.finding_citation_note)}
   ${finding(num(q3?.median_days, lang), t.finding_lag, t.finding_lag_note)}
-  ${finding(pct(resolution?.pct_attributed), t.finding_attributed, `${num(resolution?.total, lang)} ${t.of} ${num(resolution?.total, lang)}`)}
+  ${finding(pct(resolution?.pct_attributed), t.finding_attributed, `${num(resolution?.total, lang)} ${t.finding_records}`)}
 </div>
 
 ${lagHistogram({ buckets: q3?.histogram, t, lang })}
@@ -77,6 +89,10 @@ function officesIndex({ lang, t, offices, generated }) {
     lang, t, generated, depth: 2, title: t.offices_title,
     body: `<h1>${esc(t.offices_title)}</h1>
 <p class="lede">${esc(t.offices_intro)}</p>
+<div class="explainer">
+  <h2>${esc(t.office_what)}</h2>
+  <p>${esc(t.office_what_note)}</p>
+</div>
 <table>
   <tr><th>${esc(t.nav_offices)}</th><th class="n">${esc(t.office_meetings)}</th><th class="n">${esc(t.office_period)}</th><th class="n">${esc(t.office_lag)}</th></tr>
   ${rows}
@@ -104,8 +120,8 @@ function officePage({ lang, t, office, holdings, generated }) {
 
 ${yearlySparkline({ years: office.by_year, t, lang })}
 
-${held ? `<h2>${esc(t.holders_title)}</h2>
-<p class="caveat">${esc(t.observed_note)}</p>
+${held ? `<h2>${esc(t.who_held)}</h2>
+<p class="note">${esc(t.who_held_note)}</p>
 <table>
   <tr><th>${esc(t.holder)}</th><th>${esc(t.holder_title)}</th><th class="n">${esc(t.office_period)}</th><th class="n">${esc(t.office_meetings)}</th></tr>
   ${held}
@@ -158,7 +174,7 @@ function billPage({ lang, t, bill, links = [], generated }) {
     </tr>`;
   }).join('\n');
   const stageBlocks = (bill.stages || []).map((s) => `<div class="stage${s.communications ? ' busy' : ''}">
-  <h3>${esc(s.stage.replace(/_/g, ' '))} — ${date(s.event_date)}</h3>
+  <h3>${esc(stageName(s.stage, lang))} — ${date(s.event_date)}</h3>
   <p class="note">${esc(t.bill_before)} ${num(s.window_days, lang)} ${esc(t.days)}:
      ${num(s.communications, lang)} ${esc(t.office_meetings)}${s.median_filing_lag_days != null ? ` · ${esc(t.office_lag)} ${num(s.median_filing_lag_days, lang)} ${esc(t.days)}` : ''}</p>
   ${s.clients?.length ? `<table>
@@ -176,7 +192,7 @@ function billPage({ lang, t, bill, links = [], generated }) {
 <p class="lede">${esc(bill.short_title || '')}</p>
 <p class="note">${num(bill.total_linked_communications, lang)} ${esc(t.office_meetings)}</p>
 
-${accessTimeline({ links, stages, t, lang })}
+${meetingsOverTime({ links, stages, t, lang })}
 
 ${stageBlocks || `<p class="note">—</p>`}
 

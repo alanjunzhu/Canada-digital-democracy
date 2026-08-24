@@ -20,23 +20,29 @@ export const pct = (n) => (n === null || n === undefined ? '—' : `${n}%`);
 export const date = (d) => (d ? esc(String(d).slice(0, 10)) : '—');
 
 export function layout({ lang, t, title, depth = 0, body, generated }) {
-  const up = '../'.repeat(depth);
+  // Two different roots, and conflating them broke every link in the nav:
+  //   assets -> the SITE root, where style.css lives
+  //   home   -> this LANGUAGE's root, where the nav's pages live
+  // From /en/index.html those are '../' and '' respectively; from
+  // /en/bills/C-5.html they are '../../' and '../'.
+  const assets = '../'.repeat(depth);
+  const home = '../'.repeat(Math.max(depth - 1, 0));
   const other = lang === 'en' ? 'fr' : 'en';
   return `<!doctype html>
 <html lang="${lang}">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)} — ${esc(t.site_title)}</title>
-<link rel="stylesheet" href="${up}style.css">
+<link rel="stylesheet" href="${assets}style.css">
 <body>
 <header>
-  <a class="wordmark" href="${up}index.html">${esc(t.site_title)}</a>
+  <a class="wordmark" href="${home}index.html">${esc(t.site_title)}</a>
   <nav>
-    <a href="${up}index.html">${esc(t.nav_home)}</a>
-    <a href="${up}offices/index.html">${esc(t.nav_offices)}</a>
-    <a href="${up}bills/index.html">${esc(t.nav_bills)}</a>
-    <a href="${up}method.html">${esc(t.nav_method)}</a>
-    <a class="lang" href="${'../'.repeat(depth + 1)}${other}/index.html">${esc(t.other_lang)}</a>
+    <a href="${home}index.html">${esc(t.nav_home)}</a>
+    <a href="${home}offices/index.html">${esc(t.nav_offices)}</a>
+    <a href="${home}bills/index.html">${esc(t.nav_bills)}</a>
+    <a href="${home}method.html">${esc(t.nav_method)}</a>
+    <a class="lang" href="${assets}${other}/index.html">${esc(t.other_lang)}</a>
   </nav>
 </header>
 <main>
@@ -135,6 +141,10 @@ footer p { margin: 0 0 0.35rem; max-width: 62rem; }
   margin-right: 0.4rem; vertical-align: -1px; }
 .stage-tick { font-size: 11px; fill: var(--muted); font-weight: 600; }
 .axis-label { font-size: 11px; fill: var(--muted); }
+.explainer { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px;
+  padding: 0.2rem 1.1rem 0.9rem; margin: 0 0 2rem; }
+.explainer h2 { margin: 1rem 0 0.5rem; font-size: 1rem; }
+.explainer p { margin: 0 0 0.6rem; max-width: 46rem; }
 .caveat { background: var(--caveat-bg); border: 1px solid var(--caveat-rule); color: var(--ink);
   border-radius: 6px; padding: 0.8rem 1rem; font-size: 0.9rem; }
 `;

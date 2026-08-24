@@ -22,15 +22,30 @@ export const SERIES = {
 const DAY = 86400000;
 const t2 = (d) => (d ? Date.parse(d) : NaN);
 
-/** Stage labels short enough to sit above a rule without colliding. */
-const STAGE_ABBR = {
-  first_reading: '1R',
-  second_reading: '2R',
-  committee_referral: 'C→',
-  committee_report: 'C←',
-  third_reading: '3R',
-  royal_assent: 'RA',
+/**
+ * What each stage is, in words a reader who has never heard of a 'reading'
+ * can follow. '1R' and 'C→' are what the Commons calls these; they are not
+ * what anyone else calls them.
+ */
+export const STAGE_PLAIN = {
+  en: {
+    first_reading: 'Introduced',
+    second_reading: 'Agreed in principle',
+    committee_referral: 'Sent to committee',
+    committee_report: 'Back from committee',
+    third_reading: 'Final vote in the House',
+    royal_assent: 'Became law',
+  },
+  fr: {
+    first_reading: 'Présenté',
+    second_reading: 'Adopté en principe',
+    committee_referral: 'Renvoyé en comité',
+    committee_report: 'Rapport du comité',
+    third_reading: 'Vote final aux Communes',
+    royal_assent: 'Devenu loi',
+  },
 };
+export const stageName = (stage, lang) => STAGE_PLAIN[lang]?.[stage] || String(stage).replace(/_/g, ' ');
 
 /**
  * For one communication: the first bill stage that happened AFTER the meeting
@@ -53,102 +68,128 @@ export function stageReachedWhileUnpublished(link, stages) {
 }
 
 /**
- * The access timeline: one row per communication, drawn from the day it
- * happened to the day it became public, against the bill's own stage dates.
+ * Meetings per month, split by whether the public could see them yet when the
+ * bill next moved — with the bill's own steps marked underneath.
+ *
+ * This replaced a row-per-meeting timeline. That version was accurate and
+ * unreadable: at seventy-odd meetings it became a staircase of near-identical
+ * dashes with no takeaway. The question a reader actually has is 'how much
+ * happened, when, and how much of it was still hidden' — which is a count over
+ * time, so it is drawn as one.
  */
-export function accessTimeline({ links, stages, t, lang, maxRows = 45 }) {
-  const rows = [...links]
-    .filter((l) => l.comm_date)
-    .sort((a, b) => String(a.comm_date).localeCompare(String(b.comm_date)));
+export function meetingsOverTime({ links, stages, t, lang }) {
+  const rows = links.filter((l) => l.comm_date);
   if (!rows.length) return '';
 
-  const shown = rows.slice(0, maxRows);
-  const stamps = [
-    ...rows.flatMap((l) => [t2(l.comm_date), t2(l.posted_date)]),
-    ...stages.map((s) => t2(s.event_date)),
-  ].filter(Number.isFinite);
-  const min = Math.min(...stamps);
-  const max = Math.max(...stamps);
-  const span = Math.max(max - min, DAY);
+  const months = new Map();          // 'YYYY-MM' -> { open, hidden }
+  const monthOf = (d) => String(d).slice(0, 7);
+  for (const l of rows) {
+    const key = monthOf(l.comm_date);
+    if (!months.has(key)) months.set(key, { open: 0, hidden: 0 });
+    if (stageReachedWhileUnpublished(l, stages)) months.get(key).hidden++;
+    else months.get(key).open++;
+  }
 
-  const padL = 8;
-  const padR = 8;
-  const padT = 34;
-  const rowH = 16;
+  // Every month between the first and the last, so a quiet month reads as
+  // quiet rather than as missing.
+  const keys = [...months.keys()].sort();
+  const all = [];
+  for (let d = new Date(`${keys[0]}-01T00:00:00Z`), last = new Date(`${keys[keys.length - 1]}-01T00:00:00Z`);
+    d <= last; d.setUTCMonth(d.getUTCMonth() + 1)) {
+    const k = d.toISOString().slice(0, 7);
+    all.push({ key: k, ...(months.get(k) || { open: 0, hidden: 0 }) });
+  }
+
   const width = 860;
-  const height = padT + shown.length * rowH + 34;
+  const plotH = 190;
+  const padL = 34;
+  const padR = 12;
+  const padT = 14;
+  const stageBand = 108;   // three label lanes plus the track
+  const height = padT + plotH + 26 + stageBand;
   const plotW = width - padL - padR;
-  const x = (d) => padL + ((t2(d) - min) / span) * plotW;
+  const bw = plotW / all.length;
+  const peak = all.reduce((a, m) => Math.max(a, m.open + m.hidden), 0) || 1;
+  const yOf = (n) => padT + plotH - (n / peak) * plotH;
+  const xOf = (i) => padL + i * bw;
 
-  const stageMarks = stages
-    .filter((s) => Number.isFinite(t2(s.event_date)))
-    .sort((a, b) => t2(a.event_date) - t2(b.event_date))
-    .map((s, i) => {
-      const px = x(s.event_date);
-      // Alternate the label height so adjacent stages do not overprint.
-      const ly = i % 2 ? 22 : 12;
-      return `<g>
-        <line x1="${px.toFixed(1)}" y1="${padT - 6}" x2="${px.toFixed(1)}" y2="${height - 26}"
-              stroke="${SERIES.rule}" stroke-width="1" stroke-dasharray="2 3" />
-        <text x="${px.toFixed(1)}" y="${ly}" text-anchor="middle" class="stage-tick">${esc(STAGE_ABBR[s.stage] || s.stage)}</text>
-        <title>${esc(String(s.stage).replace(/_/g, ' '))} — ${date(s.event_date)}</title>
-      </g>`;
-    }).join('\n');
+  const gridlines = [0, 0.5, 1].map((f) => {
+    const y = padT + plotH - f * plotH;
+    return `<g><line x1="${padL}" y1="${y.toFixed(1)}" x2="${width - padR}" y2="${y.toFixed(1)}"
+      stroke="${SERIES.rule}" stroke-width="1" />
+      <text x="${padL - 6}" y="${(y + 4).toFixed(1)}" text-anchor="end" class="axis-label">${Math.round(f * peak)}</text></g>`;
+  }).join('');
 
-  let lateCount = 0;
-  const bars = shown.map((l, i) => {
-    const y = padT + i * rowH + rowH / 2;
-    const x1 = x(l.comm_date);
-    const x2 = l.posted_date ? x(l.posted_date) : x1;
-    const crossed = stageReachedWhileUnpublished(l, stages);
-    if (crossed) lateCount++;
-    const colour = crossed ? SERIES.late : SERIES.access;
-    const lagDays = l.posted_date
-      ? Math.round((t2(l.posted_date) - t2(l.comm_date)) / DAY) : null;
-
-    // A native <title> is the tooltip: no JavaScript, works in print and for
-    // screen readers, and cannot break the page if it fails to load.
-    const tip = [
-      `${date(l.comm_date)} → ${esc(t.chart_published)} ${date(l.posted_date)}`,
-      lagDays !== null ? `${lagDays} ${t.days}` : null,
-      l.client_name ? `${t.bill_clients}: ${l.client_name}` : null,
-      l.official_label ? `${t.bill_officials}: ${l.official_label}` : null,
-      crossed ? `⚠ ${t.chart_late_note} (${String(crossed.stage).replace(/_/g, ' ')} ${crossed.event_date})` : null,
-    ].filter(Boolean).join('\n');
-
+  const bars = all.map((m, i) => {
+    const total = m.open + m.hidden;
+    if (!total) return '';
+    const x = xOf(i) + 1.5;
+    const w = Math.max(bw - 3, 2);
+    const hiddenH = (m.hidden / peak) * plotH;
+    const openH = (m.open / peak) * plotH;
+    // A 2px gap between the two segments so they never read as one block.
+    const hiddenY = yOf(total);
+    const openY = yOf(m.open);
     return `<g class="bar">
-      <title>${esc(tip)}</title>
-      <line x1="${x1.toFixed(1)}" y1="${y}" x2="${Math.max(x2, x1 + 2).toFixed(1)}" y2="${y}"
-            stroke="${colour}" stroke-width="2" stroke-linecap="round" opacity="0.85" />
-      <circle cx="${x1.toFixed(1)}" cy="${y}" r="4" fill="${colour}" stroke="var(--panel)" stroke-width="2" />
-      ${crossed ? `<path d="M ${x(crossed.event_date).toFixed(1)} ${y - 5} l 4 8 l -8 0 z" fill="${SERIES.late}" />` : ''}
+      <title>${esc(m.key)}: ${num(total, lang)} ${esc(t.chart_meetings)}${m.hidden ? ` — ${num(m.hidden, lang)} ${esc(t.chart_hidden_short)}` : ''}</title>
+      ${m.hidden ? `<rect x="${x.toFixed(1)}" y="${hiddenY.toFixed(1)}" width="${w.toFixed(1)}" height="${Math.max(hiddenH - 2, 1).toFixed(1)}" rx="3" fill="${SERIES.late}" />` : ''}
+      ${m.open ? `<rect x="${x.toFixed(1)}" y="${openY.toFixed(1)}" width="${w.toFixed(1)}" height="${Math.max(openH, 1).toFixed(1)}" rx="3" fill="${SERIES.access}" />` : ''}
     </g>`;
   }).join('\n');
 
-  const axis = `<g class="axis">
-    <text x="${padL}" y="${height - 8}" class="axis-label">${date(new Date(min).toISOString())}</text>
-    <text x="${width - padR}" y="${height - 8}" text-anchor="end" class="axis-label">${date(new Date(max).toISOString())}</text>
-  </g>`;
+  const monthTicks = all.map((m, i) => (i === 0 || i === all.length - 1 || m.key.endsWith('-01') || i % 3 === 0
+    ? `<text x="${(xOf(i) + bw / 2).toFixed(1)}" y="${(padT + plotH + 16).toFixed(1)}" text-anchor="middle" class="axis-label">${esc(m.key)}</text>`
+    : '')).join('');
+
+  // The bill's own steps, on their own track under the bars, each with a
+  // leader line up to the month it happened in.
+  const firstMs = Date.parse(`${all[0].key}-01T00:00:00Z`);
+  const lastMs = Date.parse(`${all[all.length - 1].key}-01T00:00:00Z`) + 30 * DAY;
+  const xForDate = (d) => padL + ((t2(d) - firstMs) / Math.max(lastMs - firstMs, DAY)) * plotW;
+  const trackY = padT + plotH + 40;
+
+  const sorted = [...stages].filter((s2) => Number.isFinite(t2(s2.event_date)))
+    .sort((a, b) => t2(a.event_date) - t2(b.event_date));
+  const stageTrack = `<line x1="${padL}" y1="${trackY}" x2="${width - padR}" y2="${trackY}" stroke="${SERIES.rule}" stroke-width="2" />`
+    + (() => {
+      // Steps two weeks apart put their labels on top of each other. Assign
+      // each label to the first lane whose previous label ends far enough to
+      // the left; three lanes is enough for six steps at any spacing.
+      const laneEnds = [-Infinity, -Infinity, -Infinity];
+      return sorted.map((s2) => {
+        const x = Math.min(Math.max(xForDate(s2.event_date), padL), width - padR);
+        const halfLabel = Math.max(stageName(s2.stage, lang).length * 3.4, 34);
+        let lane = laneEnds.findIndex((end) => x - halfLabel > end);
+        if (lane < 0) lane = laneEnds.indexOf(Math.min(...laneEnds));
+        laneEnds[lane] = x + halfLabel;
+        const ly = trackY + 18 + lane * 26;
+      return `<g>
+        <title>${esc(stageName(s2.stage, lang))} — ${date(s2.event_date)}</title>
+        <line x1="${x.toFixed(1)}" y1="${padT}" x2="${x.toFixed(1)}" y2="${trackY}" stroke="${SERIES.rule}" stroke-width="1" stroke-dasharray="2 4" />
+        <circle cx="${x.toFixed(1)}" cy="${trackY}" r="5" fill="var(--panel)" stroke="${SERIES.ink}" stroke-width="2" />
+        <text x="${x.toFixed(1)}" y="${ly}" text-anchor="middle" class="stage-tick">${esc(stageName(s2.stage, lang))}</text>
+        <text x="${x.toFixed(1)}" y="${ly + 12}" text-anchor="middle" class="axis-label">${date(s2.event_date)}</text>
+      </g>`;
+      }).join('\n');
+    })();
+
+  const hidden = rows.filter((l) => stageReachedWhileUnpublished(l, stages)).length;
 
   return `<figure class="chart">
-  <figcaption>
-    <strong>${esc(t.chart_access_title)}</strong>
-    <span class="note">${esc(t.chart_access_note)}</span>
-  </figcaption>
+  <figcaption><strong>${esc(t.chart_access_title)}</strong>
+    <span class="note">${esc(t.chart_access_note)}</span></figcaption>
   <div class="legend">
     <span><i class="swatch" style="background:${SERIES.access}"></i>${esc(t.chart_legend_normal)}</span>
-    <span><i class="swatch late" style="background:${SERIES.late}"></i>▲ ${esc(t.chart_legend_late)}</span>
-    <span class="note">1R · 2R · C→ · C← · 3R · RA = ${esc(t.chart_stage_key)}</span>
+    <span><i class="swatch" style="background:${SERIES.late}"></i>${esc(t.chart_legend_late)}</span>
   </div>
   <svg viewBox="0 0 ${width} ${height}" role="img" width="100%" height="${height}"
        aria-label="${esc(t.chart_access_title)}">
-    ${stageMarks}
+    ${gridlines}
     ${bars}
-    ${axis}
+    ${monthTicks}
+    ${stageTrack}
   </svg>
-  ${rows.length > shown.length
-    ? `<p class="note">${esc(t.chart_truncated)} ${num(shown.length, lang)} / ${num(rows.length, lang)}</p>` : ''}
-  ${lateCount ? `<p class="caveat">${num(lateCount, lang)} ${esc(t.chart_late_summary)}</p>` : ''}
+  ${hidden ? `<p class="caveat"><strong>${num(hidden, lang)} ${esc(t.of)} ${num(rows.length, lang)}</strong> ${esc(t.chart_late_summary)}</p>` : ''}
 </figure>`;
 }
 
