@@ -1,0 +1,95 @@
+{
+  "client": "Business Council of Canada",
+  "meetings": [
+    {
+      "communication_id": "40001",
+      "date": "2025-01-11",
+      "posted_date": "2025-01-21",
+      "client": "Business Council of Canada",
+      "registrant": "Vega, Adriana",
+      "office_key": "finance canada fin",
+      "office_label": "Finance Canada (FIN)",
+      "officials": [
+        {
+          "name": "Nguyen, Mai",
+          "title": "Minister of Finance"
+        }
+      ]
+    },
+    {
+      "communication_id": "40002",
+      "date": "2025-02-12",
+      "posted_date": "2025-02-22",
+      "client": "Business Council of Canada",
+      "registrant": "Vega, Adriana",
+      "office_key": "health canada hc",
+      "office_label": "Health Canada (HC)",
+      "officials": [
+        {
+          "name": "Okafor, Ada",
+          "title": "Assistant Deputy Minister"
+        }
+      ]
+    },
+    {
+      "communication_id": "40003",
+      "date": "2025-03-13",
+      "posted_date": "2025-03-23",
+      "client": "Business Council of Canada",
+      "registrant": "Vega, Adriana",
+      "office_key": "finance canada fin",
+      "office_label": "Finance Canada (FIN)",
+      "officials": [
+        {
+          "name": "Nguyen, Mai",
+          "title": "Minister of Finance"
+        }
+      ]
+    },
+    {
+      "communication_id": "40004",
+      "date": "2025-04-14",
+      "posted_date": "2025-04-24",
+      "client": "Business Council of Canada",
+      "registrant": "Vega, Adriana",
+      "office_key": "health canada hc",
+      "office_label": "Health Canada (HC)",
+      "officials": [
+        {
+          "name": "Okafor, Ada",
+          "title": "Assistant Deputy Minister"
+        }
+      ]
+    },
+    {
+      "communication_id": "40005",
+      "date": "2025-05-15",
+      "posted_date": "2025-05-25",
+      "client": "Business Council of Canada",
+      "registrant": "Vega, Adriana",
+      "office_key": "finance canada fin",
+      "office_label": "Finance Canada (FIN)",
+      "officials": [
+        {
+          "name": "Nguyen, Mai",
+          "title": "Minister of Finance"
+        }
+      ]
+    },
+    {
+      "communication_id": "40006",
+      "date": "2025-06-16",
+      "posted_date": "2025-06-26",
+      "client": "Business Council of Canada",
+      "registrant": "Vega, Adriana",
+      "office_key": "health canada hc",
+      "office_label": "Health Canada (HC)",
+      "officials": [
+        {
+          "name": "Okafor, Ada",
+          "title": "Assistant Deputy Minister"
+        }
+      ]
+    }
+  ]
+}

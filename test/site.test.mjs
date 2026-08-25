@@ -10,7 +10,9 @@ let outDir;
 
 test.before(async () => {
   outDir = await mkdtemp(join(tmpdir(), 'site-'));
-  await buildSite({ dataDir, outDir });
+  // minPersonMeetings is lowered so the small fixture office produces person
+  // pages; on the real data the default keeps the page count sane.
+  await buildSite({ dataDir, outDir, minPersonMeetings: 2 });
 });
 test.after(async () => { await rm(outDir, { recursive: true, force: true }); });
 
@@ -320,4 +322,96 @@ test('a paged year says how many meetings the year holds, not how many this page
   } finally {
     await rm(out, { recursive: true, force: true });
   }
+});
+
+// --- organisations, people, and what a bill actually is --------------------
+
+test('the organisations index ranks who is doing the asking', async () => {
+  const p = await page('en/clients/index.html');
+  assert.match(p, /Who is doing the asking/);
+  assert.match(p, /Business Council of Canada/);
+  assert.match(p, /business-council-of-canada\.html/);
+  // Organisation names are registrant free text and end up in HTML.
+  assert.match(p, /&lt;script&gt;/);
+  assert.doesNotMatch(p, /<script>alert/);
+});
+
+test('an organisation page answers who they meet most, and links to that person', async () => {
+  const p = await page('en/clients/business-council-of-canada.html');
+  assert.match(p, /Who they meet most/);
+  assert.match(p, /Nguyen, Mai/);
+  assert.match(p, /Minister of Finance/);
+  assert.match(p, /2 other job titles filed/);
+  // Through to the person's own page, and to the office they sit in.
+  assert.match(p, /href="\.\.\/offices\/finance-canada-fin--who--nguyen-mai\.html"/);
+  assert.match(p, /href="\.\.\/offices\/finance-canada-fin\.html"/);
+  // And where they lobby, and who files for them.
+  assert.match(p, /Where they lobby/);
+  assert.match(p, /Lobbyists who filed for them/);
+  assert.match(p, /Vega, Adriana/);
+});
+
+test('an organisation page carries its whole meeting log, filterable', async () => {
+  const p = await page('en/clients/business-council-of-canada.html');
+  assert.match(p, /Every meeting they filed/);
+  assert.match(p, /Filter by name/);
+  const body = p.slice(p.indexOf('id="log"'));
+  for (const d of ['2025-01-11', '2025-06-16']) assert.match(body, new RegExp(d));
+});
+
+test('an organisation with no published log says so instead of looking complete', async () => {
+  const p = await page('en/clients/script-alert-1.html');
+  assert.match(p, /published for the organisations that file the most/);
+});
+
+test('a person page is one name at one office, and says so', async () => {
+  const p = await page('en/offices/finance-canada-fin--who--nguyen-mai.html');
+  assert.match(p, /Nguyen, Mai/);
+  assert.match(p, /Finance Canada \(FIN\)/);
+  assert.match(p, /Job titles as filed/);
+  assert.match(p, /Who asked to see them most/);
+  assert.match(p, /Every meeting they were named in/);
+  // The caution about identity is on the page, not buried in the method.
+  assert.match(p, /two people who share a name/);
+});
+
+test('the office page links each person through to their own record', async () => {
+  const p = await page('en/offices/finance-canada-fin.html');
+  assert.match(p, /href="finance-canada-fin--who--nguyen-mai\.html"/);
+});
+
+test('bills are ordered by what happened most recently, not by volume', async () => {
+  const p = await page('en/bills/index.html');
+  // C-18 has four hundred linked meetings to C-5's 282, but its last step was
+  // in 2023: ordering by volume put a finished 2023 bill above this month's.
+  assert.ok(p.indexOf('45-1-c-5.html') < p.indexOf('44-1-c-18.html'), 'newest activity first');
+  assert.match(p, /Newest first/);
+  assert.match(p, /Filter by name/);
+});
+
+test('a bill page says what the bill is, how far it got, and where to read it', async () => {
+  const p = await page('en/bills/45-1-c-5.html');
+  assert.match(p, /What this bill is/);
+  assert.match(p, /Government Bill/);
+  assert.match(p, /Moved by Freeland, Chrystia/);
+  assert.match(p, /Became law 2025-06-26/);
+  assert.match(p, /https:\/\/www\.parl\.ca\/legisinfo\/en\/bill\/45-1\/c-5/);
+  // Why it is here at all — measured, and explicitly not a judgement of worth.
+  assert.match(p, /Why it is on this site/);
+  assert.match(p, /282 filed meetings named this bill, from 5 organisations/);
+  assert.match(p, /not how important anyone thinks it is/);
+});
+
+test('a bill page shows what those meetings were filed as being about', async () => {
+  const p = await page('en/bills/45-1-c-5.html');
+  assert.match(p, /What those meetings were about/);
+  assert.match(p, /Infrastructure/);
+  assert.match(p, /the subject categories the lobbyists ticked/i);
+});
+
+test('the French bill page points at the French bill, and the French titles', async () => {
+  const p = await page('fr/bills/45-1-c-5.html');
+  assert.match(p, /https:\/\/www\.parl\.ca\/legisinfo\/fr\/bill\/45-1\/c-5/);
+  assert.match(p, /Loi concernant certains ouvrages/);
+  assert.match(p, /Projet de loi du gouvernement/);
 });

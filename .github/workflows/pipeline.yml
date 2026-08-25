@@ -298,6 +298,22 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # The resolve and site steps are continue-on-error so that a failure in
+      # one still leaves the other's output attached to the run. That once let
+      # a crash inside resolve pass as a green run for a whole day: the site
+      # rebuilt from the previous run's JSON and nobody was told. A missing
+      # report is now a failed run.
+      - name: The resolution step must have produced its report
+        if: always() && steps.files.outputs.comms != '' && steps.files.outputs.dpoh != ''
+        run: |
+          for f in resolution-report.json office-access.json office-archive-index.json client-access.json; do
+            if [ ! -f "data/out/$f" ]; then
+              echo "resolve did not finish: data/out/$f is missing (see the resolve step's log)" >&2
+              exit 1
+            fi
+          done
+          echo "resolve wrote every report it is supposed to write."
+
       # Last, so the numbers are the last thing in the log rather than buried
       # under two artifact uploads. This is the run's actual output.
       - name: Headline numbers

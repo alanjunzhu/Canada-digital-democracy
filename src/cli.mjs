@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { COMMUNICATION_COLUMNS, DPOH_COLUMNS, COMM_SUBJECT_DETAIL_COLUMNS, SESSIONS } from './config/sources.mjs';
+import { dirname } from 'node:path';
+import { COMMUNICATION_COLUMNS, DPOH_COLUMNS, COMM_SUBJECT_DETAIL_COLUMNS, COMM_SUBJECT_CODE_COLUMNS,
+  SUBJECT_CODE_LOOKUP_COLUMNS, SESSIONS } from './config/sources.mjs';
 import { probeColumns, ingestCsv, isoDate, normalizeDpohRows } from './fetch/ingest-lobbying.mjs';
 import { fetchMembers } from './fetch/fetch-members.mjs';
 import { fetchBills } from './fetch/fetch-bills.mjs';
@@ -61,7 +63,10 @@ const identifiedFiles = async () => {
   } catch { return {}; }
 };
 const write = async (name, obj) => {
-  await mkdir(OUT, { recursive: true });
+  // mkdir on the file's own directory, not just OUT: `office-meetings/x.json`
+  // used to throw ENOENT here, and because the pipeline runs this step with
+  // continue-on-error the run went green while writing no report at all.
+  await mkdir(dirname(`${OUT}/${name}`), { recursive: true });
   await writeFile(`${OUT}/${name}`, JSON.stringify(obj, null, 2));
   console.log(`wrote ${OUT}/${name}`);
 };
@@ -303,10 +308,11 @@ switch (cmd) {
       // asking.
       const who = row.dpoh_raw && row.dpoh_raw.trim();
       if (who) {
-        const pk = `${who}|${row.dpoh_title_raw || ''}`;
+        const pk = who;
         if (!o.people.has(pk)) {
           o.people.set(pk, {
             name: who,
+            titles: new Map(),
             title: row.dpoh_title_raw || null,
             branch: row.branch || null,
             person_id: res.person_id || null,
@@ -319,6 +325,8 @@ switch (cmd) {
         }
         const person = o.people.get(pk);
         person.meetings++;
+        const rawTitle = row.dpoh_title_raw || '';
+        person.titles.set(rawTitle, (person.titles.get(rawTitle) || 0) + 1);
         if (!person.person_id && res.person_id) person.person_id = res.person_id;
         const cname = commById.get(dpohRows[i].communication_id)?.client_name;
         if (cname) person.clients.set(cname, (person.clients.get(cname) || 0) + 1);
@@ -385,6 +393,9 @@ switch (cmd) {
           .map((pp) => ({
             ...pp,
             clients: undefined,
+            titles: undefined,
+            title: [...pp.titles.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null,
+            other_titles: pp.titles.size - 1,
             top_clients: [...pp.clients.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([client, n]) => ({ client, n })),
           })),
         recent_meetings: [...o.meetings.values()]
@@ -417,6 +428,170 @@ switch (cmd) {
       archived_meetings: archived.reduce((a, b) => a + b.meetings, 0),
       total_offices: officeAccess.length,
       offices: archived,
+    });
+
+    // --- who was doing the asking -----------------------------------------
+    // The office pages answer 'who came to see this office'. The other half of
+    // the question is 'this organisation — who do they actually see?', and it
+    // is the half a reader asks first. Counting is done twice on purpose: a
+    // cheap pass over the communications to find which organisations are big
+    // enough to publish, then a detailed pass that keeps meetings only for
+    // those. Keeping every meeting for all 25,000 client names at once is what
+    // would put this process into swap.
+    // Two office keys can carry the same label — a department and its deputy
+    // minister's office both file as 'Natural Resources Canada (NRCan)'. Two
+    // identical rows with different counts read as a bug, so the part of the
+    // key that is not in the label is spelled out.
+    const disambiguate = (list, field = 'label') => {
+      const keysPerLabel = new Map();
+      for (const o of list) {
+        if (!keysPerLabel.has(o[field])) keysPerLabel.set(o[field], new Set());
+        keysPerLabel.get(o[field]).add(o.office_key);
+      }
+      return list.map((o) => {
+        if ((keysPerLabel.get(o[field])?.size || 0) < 2) return o;
+        const labelWords = new Set(String(o[field]).toLowerCase().replace(/[^a-z0-9]+/g, ' ').split(/\s+/).filter(Boolean));
+        const extra = String(o.office_key || '').split(/\s+/).filter((w) => !labelWords.has(w))
+          .join(' ')
+          // 'deputy minister of' reads as an unfinished sentence; the words
+          // that only ever join two others are dropped from the ends.
+          .replace(/^(?:of|the|de|du|des|la|le)\s+/, '')
+          .replace(/\s+(?:of|the|de|du|des|la|le)$/, '')
+          .replace(/\b[a-z]/g, (ch) => ch.toUpperCase())
+          .trim();
+        return extra ? { ...o, [field]: `${o[field]} — ${extra}` } : o;
+      });
+    };
+    const TOP_CLIENTS = Number(flag('clients', '300'));
+    const ARCHIVE_CLIENTS = Number(flag('archive-clients', '120'));
+    const clientTotals = new Map();
+    for (const r of commRows) {
+      const name = r.client_name;
+      if (!name) continue;
+      const d = isoDate(r.comm_date);
+      const c = clientTotals.get(name) || { client: name, communications: 0, first_date: null, last_date: null };
+      c.communications++;
+      if (d) {
+        if (!c.first_date || d < c.first_date) c.first_date = d;
+        if (!c.last_date || d > c.last_date) c.last_date = d;
+      }
+      clientTotals.set(name, c);
+    }
+    const topClients = [...clientTotals.values()]
+      .sort((a, b) => b.communications - a.communications)
+      .slice(0, TOP_CLIENTS);
+    const wanted = new Map(topClients.map((c) => [c.client, {
+      ...c,
+      rows: 0,
+      people: new Map(),
+      offices: new Map(),
+      registrants: new Map(),
+      meetings: new Map(),
+    }]));
+
+    results.forEach((res, i) => {
+      const row = dpohRows[i];
+      const comm = commById.get(row.communication_id);
+      const c = comm?.client_name && wanted.get(comm.client_name);
+      if (!c) return;
+      c.rows++;
+      const officeKey = res.office_key || null;
+      const officeLabel = row.institution || res.office_title || officeKey;
+      if (officeKey) {
+        const o = c.offices.get(officeKey) || { office_key: officeKey, label: officeLabel, n: 0 };
+        o.n++;
+        c.offices.set(officeKey, o);
+      }
+      const who = row.dpoh_raw && row.dpoh_raw.trim();
+      if (who) {
+        // Keyed by office as well as name: two people can share a surname and
+        // an initial, and the record gives us nothing to tell them apart
+        // across departments. Saying 'this name, at this office' is a claim
+        // the filings support.
+        const pk = `${who}|${officeKey || ''}`;
+        const p2 = c.people.get(pk) || {
+          name: who,
+          // Titles are rolled up rather than split: the same person filed as
+          // 'Assistant Deputy Minister' and 'ADM' is one person meeting this
+          // organisation, and listing them twice understated both counts.
+          titles: new Map(),
+          office_key: officeKey,
+          office_label: officeLabel,
+          person_id: res.person_id || null,
+          status: res.status,
+          n: 0,
+          first_date: null,
+          last_date: null,
+        };
+        p2.n++;
+        const rawTitle = row.dpoh_title_raw || '';
+        p2.titles.set(rawTitle, (p2.titles.get(rawTitle) || 0) + 1);
+        if (!p2.person_id && res.person_id) p2.person_id = res.person_id;
+        const d = dateById.get(row.communication_id);
+        if (d) {
+          if (!p2.first_date || d < p2.first_date) p2.first_date = d;
+          if (!p2.last_date || d > p2.last_date) p2.last_date = d;
+        }
+        c.people.set(pk, p2);
+      }
+      const reg = [comm?.registrant_surname, comm?.registrant_given].filter(Boolean).join(', ');
+      if (reg) c.registrants.set(reg, (c.registrants.get(reg) || 0) + 1);
+
+      if (!c.meetings.has(row.communication_id)) {
+        c.meetings.set(row.communication_id, {
+          communication_id: row.communication_id,
+          date: dateById.get(row.communication_id) || null,
+          posted_date: isoDate(comm?.posted_date),
+          client: comm?.client_name || null,
+          registrant: reg || null,
+          office_key: officeKey,
+          office_label: officeLabel,
+          officials: [],
+        });
+      }
+      if (who) {
+        c.meetings.get(row.communication_id).officials.push({
+          name: who, title: row.dpoh_title_raw || null, branch: row.branch || null,
+        });
+      }
+    });
+
+    const clientAccess = [...wanted.values()]
+      .sort((a, b) => b.communications - a.communications)
+      .map((c) => ({
+        client: c.client,
+        slug: slugFor(c.client),
+        communications: c.communications,
+        rows: c.rows,
+        first_date: c.first_date,
+        last_date: c.last_date,
+        // The answer to 'who do they actually see', ranked.
+        top_people: disambiguate([...c.people.values()].sort((a, b) => b.n - a.n).slice(0, 25), 'office_label').map((p2) => ({
+          ...p2,
+          titles: undefined,
+          title: [...p2.titles.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null,
+          other_titles: p2.titles.size - 1,
+        })),
+        top_offices: disambiguate([...c.offices.values()].sort((a, b) => b.n - a.n).slice(0, 15)),
+        top_registrants: [...c.registrants.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10)
+          .map(([registrant, n]) => ({ registrant, n })),
+        archived_meetings: 0,
+      }));
+    const archivedClients = [];
+    for (const c of clientAccess.slice(0, ARCHIVE_CLIENTS)) {
+      const meetings = [...wanted.get(c.client).meetings.values()]
+        .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+      c.archived_meetings = meetings.length;
+      await write(`client-meetings/${c.slug}.json`, { client: c.client, meetings });
+      archivedClients.push({ client: c.client, slug: c.slug, meetings: meetings.length });
+    }
+    await write('client-access.json', clientAccess);
+    await write('client-archive-index.json', {
+      archived_clients: archivedClients.length,
+      archived_meetings: archivedClients.reduce((a, b) => a + b.meetings, 0),
+      total_clients: clientTotals.size,
+      published_clients: clientAccess.length,
+      clients: archivedClients,
     });
 
     const report = summarize(results);
@@ -663,6 +838,40 @@ Q4  DPOH row shape
     const byBill = new Map();
     for (const l of links) byBill.set(l.bill_id, (byBill.get(l.bill_id) || 0) + 1);
 
+    // What the meetings about each bill were filed as being ABOUT. The OCL
+    // publishes a fixed list of subject categories per communication; joining
+    // it here gives a bill page something concrete to say beyond the count,
+    // and it is the registrants' own categorisation, not ours.
+    const codesPath = flag('subject-codes', null) || identified.subject_codes;
+    const lookupPath = flag('subject-lookup', null) || identified.subject_codes_lookup;
+    const areasByBill = new Map();
+    if (codesPath && lookupPath) {
+      const { rows: lookupRows } = await ingestCsv(lookupPath, SUBJECT_CODE_LOOKUP_COLUMNS);
+      const labels = new Map(lookupRows.map((r) => [r.subject_code, { en: r.label_en, fr: r.label_fr }]));
+      const { rows: codeRows } = await ingestCsv(codesPath, COMM_SUBJECT_CODE_COLUMNS);
+      const codesByComm = new Map();
+      for (const r of codeRows) {
+        if (!linkedComms.has(r.communication_id)) continue;
+        if (!codesByComm.has(r.communication_id)) codesByComm.set(r.communication_id, []);
+        codesByComm.get(r.communication_id).push(r.subject_code);
+      }
+      for (const l of links) {
+        for (const code of codesByComm.get(l.communication_id) || []) {
+          if (!areasByBill.has(l.bill_id)) areasByBill.set(l.bill_id, new Map());
+          const m = areasByBill.get(l.bill_id);
+          m.set(code, (m.get(code) || 0) + 1);
+        }
+      }
+      await write('bill-areas.json', Object.fromEntries([...areasByBill.entries()].map(([bill_id, m]) => [
+        bill_id,
+        [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([code, n]) => ({
+          code, n, en: labels.get(code)?.en || code, fr: labels.get(code)?.fr || code,
+        })),
+      ])));
+    } else {
+      console.log('no subject-code files identified: skipping the areas join');
+    }
+
     await write('comm-bill-links.json', links);
     await write('citation-report.json', {
       communications_with_subject_text: textByComm.size,
@@ -672,13 +881,15 @@ Q4  DPOH row shape
         .map(([bill_id, n]) => ({ bill_id, n, short_title: billById.get(bill_id)?.short_title || null })),
       unplaced_citations: [...unmatched.entries()].sort((a, b) => b[1] - a[1]).slice(0, 25).map(([ref, n]) => ({ ref, n })),
     });
-    console.log(`${links.length} citation links across ${byBill.size} bills`);
+    console.log(`${links.length} citation links across ${byBill.size} bills`
+      + `; subject categories for ${areasByBill.size} of them`);
     break;
   }
   case 'site': {
     const { buildSite } = await import('./site/build.mjs');
     const r = await buildSite({ dataDir: OUT, outDir: flag('out', 'site') });
-    console.log(`built ${r.pages} pages (${r.offices} offices, ${r.bills} bills, EN + FR) from data generated ${r.generated}`);
+    console.log(`built ${r.pages} pages, ${r.megabytes} MB (${r.offices} offices, ${r.clients} organisations, `
+      + `${r.people} people, ${r.bills} bills, EN + FR) from data generated ${r.generated}`);
     break;
   }
   case 'timeline': {

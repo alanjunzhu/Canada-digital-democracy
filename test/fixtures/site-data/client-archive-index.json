@@ -1,0 +1,13 @@
+{
+  "archived_clients": 1,
+  "archived_meetings": 6,
+  "total_clients": 812,
+  "published_clients": 2,
+  "clients": [
+    {
+      "client": "Business Council of Canada",
+      "slug": "business-council-of-canada",
+      "meetings": 6
+    }
+  ]
+}

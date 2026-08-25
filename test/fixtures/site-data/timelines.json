@@ -17,7 +17,7 @@
             "client": "Business Council of Canada",
             "count": 4,
             "officials": [
-              "Doe, Jane \u2014 Chief of Staff"
+              "Doe, Jane — Chief of Staff"
             ]
           }
         ]
@@ -31,6 +31,49 @@
         "median_filing_lag_days": null,
         "clients": []
       }
+    ],
+    "parliament": 45,
+    "session": 1,
+    "chamber": "Commons",
+    "long_title": "An Act respecting certain federal works and undertakings",
+    "short_title_fr": "Loi sur une économie canadienne unifiée",
+    "long_title_fr": "Loi concernant certains ouvrages fédéraux",
+    "sponsor": "Freeland, Chrystia",
+    "sponsor_title": "Minister of Transport and Internal Trade",
+    "bill_type": "Government Bill",
+    "bill_type_fr": "Projet de loi du gouvernement",
+    "status": "Royal assent",
+    "status_fr": "Sanction royale",
+    "became_law": true,
+    "royal_assent_date": "2025-06-26",
+    "first_event_date": "2025-06-06",
+    "last_event_date": "2025-06-26",
+    "distinct_clients": 5,
+    "distinct_institutions": 3,
+    "top_clients": [
+      {
+        "client": "Business Council of Canada",
+        "n": 4
+      }
     ]
+  },
+  {
+    "bill_id": "44-1/C-18",
+    "number": "C-18",
+    "short_title": "Online News Act",
+    "parliament": 44,
+    "session": 1,
+    "chamber": "Commons",
+    "sponsor": "Rodriguez, Pablo",
+    "bill_type": "Government Bill",
+    "status": "Second reading",
+    "became_law": false,
+    "first_event_date": "2022-04-05",
+    "last_event_date": "2023-02-01",
+    "total_linked_communications": 400,
+    "distinct_clients": 9,
+    "distinct_institutions": 2,
+    "stages": [],
+    "top_clients": []
   }
 ]

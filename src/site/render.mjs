@@ -98,6 +98,7 @@ export function layout({ lang, t, title, depth = 0, body, generated }) {
   <nav>
     <a href="${home}index.html">${esc(t.nav_home)}</a>
     <a href="${home}offices/index.html">${esc(t.nav_offices)}</a>
+    <a href="${home}clients/index.html">${esc(t.nav_clients)}</a>
     <a href="${home}bills/index.html">${esc(t.nav_bills)}</a>
     <a href="${home}method.html">${esc(t.nav_method)}</a>
     <a class="lang" href="${assets}${other}/index.html">${esc(t.other_lang)}</a>

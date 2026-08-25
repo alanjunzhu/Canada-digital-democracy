@@ -1,0 +1,16 @@
+{
+  "45-1/C-5": [
+    {
+      "code": "SMT-INF",
+      "n": 9,
+      "en": "Infrastructure",
+      "fr": "Infrastructure"
+    },
+    {
+      "code": "SMT-ENV",
+      "n": 4,
+      "en": "Environment",
+      "fr": "Environnement"
+    }
+  ]
+}

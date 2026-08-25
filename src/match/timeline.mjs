@@ -51,11 +51,44 @@ export function buildBillTimeline(bill, events, comms, opts = {}) {
     };
   });
 
+  // What a reader needs before any of the above means anything: what the bill
+  // is, who moved it, how far it got, and when it last did anything. All of it
+  // is copied from LEGISinfo or counted here — none of it is a judgement.
+  const clients = new Set(comms.map((c) => c.client_name).filter(Boolean));
+  const officials = new Set();
+  for (const c of comms) for (const o of c.officials || []) if (o.institution) officials.add(o.institution);
+  const dates = sorted.map((e) => e.event_date).filter(Boolean);
+  const royal = sorted.find((e) => e.stage === 'royal_assent');
+
   return {
     bill_id: bill.bill_id,
     number: bill.number,
+    parliament: bill.parliament ?? null,
+    session: bill.session ?? null,
+    chamber: bill.chamber || null,
     short_title: bill.short_title,
+    long_title: bill.long_title || null,
+    short_title_fr: bill.short_title_fr || null,
+    long_title_fr: bill.long_title_fr || null,
+    sponsor: bill.sponsor || null,
+    sponsor_title: bill.sponsor_title || null,
+    bill_type: bill.bill_type || null,
+    bill_type_fr: bill.bill_type_fr || null,
+    status: bill.status || null,
+    status_fr: bill.status_fr || null,
+    latest_event: bill.latest_event || null,
+    latest_event_fr: bill.latest_event_fr || null,
+    became_law: Boolean(royal || bill.royal_assent_date),
+    royal_assent_date: royal?.event_date || bill.royal_assent_date || null,
+    first_event_date: dates[0] || null,
+    last_event_date: bill.latest_event_date || dates[dates.length - 1] || null,
     total_linked_communications: comms.length,
+    distinct_clients: clients.size,
+    distinct_institutions: officials.size,
+    top_clients: [...comms.reduce((m, c) => {
+      if (c.client_name) m.set(c.client_name, (m.get(c.client_name) || 0) + 1);
+      return m;
+    }, new Map()).entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([client, n]) => ({ client, n })),
     stages,
   };
 }

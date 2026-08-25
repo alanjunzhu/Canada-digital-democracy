@@ -55,6 +55,21 @@ Built by the same run that processes the data, published to GitHub Pages:
   with a filter box that narrows the page by person, job title, organisation
   or lobbyist. The top 50 offices hold 87% of the attributed record; the long
   tail keeps its most recent meetings and says on the page that it does.
+- **Organisations** — who is doing the asking. For each of the 300 organisations
+  that file the most: **who they meet most**, ranked, with the job title as
+  filed and the office; where they lobby; which lobbyists file for them; and
+  their whole meeting log, filterable and paginated.
+- **People** — one page per person per office, for the names the record leans
+  on: every job title they were filed under, who asked to see them most, and
+  every meeting they were named in. Keyed by name *and* office, because the
+  filings carry no identifier for public servants and two people who share a
+  name at one office cannot be told apart.
+- **Bills** — ordered by what happened most recently. Each bill page opens with
+  what the bill is (type, sponsor, when it was introduced, how far it got, a
+  link to read it on LEGISinfo), why it is on this site at all (the meeting
+  count, stated as a count and not as a judgement of importance), and what
+  those meetings were filed as being about — the registrants' own subject
+  categories.
 - **Bills** — for each bill registrants named: meetings per month, split by
   whether the public could see them yet when the bill took its next step.
 - **Method** — what the record cannot tell you, before what it can.
@@ -108,7 +123,7 @@ can reach.
 ## Commands
 
 ```bash
-npm test                 # 122 unit tests, no network
+npm test                 # 132 unit tests, no network
 
 npm run fetch:lobbying   # OCL bulk files via the Open Government catalogue
 npm run probe            # real column headers, and the file's encoding, vs. what config expects
@@ -127,6 +142,11 @@ npm run probe:members    # which roster endpoint knows the names that failed
 Commands find their inputs through `data/out/download-manifest.json`, which
 records which downloaded CSV is which — decided by reading each file's headers,
 not by trusting its name.
+
+`resolve` takes `--archive-offices` (default 50), `--clients` (300 published)
+and `--archive-clients` (120 with a full log); `site` writes about 470 MB of
+HTML across both languages and prints the figure, because the archive is most
+of it and a silent tenfold jump there is worth noticing.
 
 ## Design rules that are not negotiable
 
@@ -189,6 +209,7 @@ src/match/derive-offices.mjs     the roster, derived from the filings
 src/match/bill-refs.mjs          citation extraction, session scoping
 src/match/timeline.mjs           pre-stage access windows + filing lag
 data/out/office-meetings/        per-office meeting archives, written by `resolve`
+data/out/client-meetings/        per-organisation meeting logs, written by `resolve`
 src/site/                        the static site: strings (EN/FR), charts, pages
 ```
 

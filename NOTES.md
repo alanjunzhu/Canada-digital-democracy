@@ -255,3 +255,67 @@ Two things the rendered page caught that the tests did not:
 The filter is deliberately dumb: substring match over `row.textContent`, no
 index, no fetch. 500 rows is small enough that it is instant, and it means a
 reader with JavaScript off loses nothing but the narrowing.
+
+## The archive never shipped, and the run went green anyway
+
+The first version of the archive wrote `data/out/office-meetings/<slug>.json`
+through a helper that only ever created `data/out`. Writing into a
+subdirectory threw ENOENT, `resolve` died on the spot — before its own
+coverage report — and because that step is `continue-on-error` (so a crash
+there still leaves the site and the reports attached to the run) the job
+finished green. The site then rebuilt from the *previous* run's JSON, which
+had no archive in it, and the published site looked exactly as it had the day
+before. The only visible trace was a site build that took one second.
+
+Two fixes: the helper now creates the file's own directory, and the pipeline
+fails if `resolve` did not leave its reports behind. A step allowed to fail
+needs something downstream that notices.
+
+## Who is doing the asking
+
+The office pages answer 'who came to see this office'. The question a reader
+asks first is the other one: this organisation — who do they actually see?
+That is now its own tree, built in `resolve` in two passes: a cheap count over
+the communications to find which of the 8,726 organisation names are big
+enough to publish, then a detailed pass that keeps meetings only for those.
+Keeping every meeting for every name at once is what would put the process
+into swap.
+
+Three decisions inside it, each of which showed up as a visible defect first:
+
+- **A person is a name at an office, not a name.** The record carries no
+  identifier for public servants. Two 'Smith, John' at the same department
+  cannot be told apart, and the page says so rather than implying an identity
+  the filings do not support.
+- **Job titles are rolled up.** Marian Campbell Jarvis filed as 'Assistant
+  Deputy Minister' 52 times and 'ADM' 24 times; keyed by title she was two
+  people, each undercounted. The page shows the title filed most often and
+  says how many others there were. Guy Gallant's page lists eight, including
+  'Cheif of Staff' — the record's own spelling, kept.
+- **Two offices can carry the same label.** A department and its deputy
+  minister's office both file as 'Natural Resources Canada (NRCan)', so a
+  client page printed the same name twice with different counts, which reads
+  as a bug. The part of the office key that is not already in the label is
+  now spelled out: 'Natural Resources Canada (NRCan) — Deputy Minister'.
+
+## What a bill page owes a reader
+
+It used to open with a number and a chart. It now opens with what the bill is
+— type, sponsor, introduced, how far it got, and a link to read it on
+LEGISinfo — then why it is on this site at all, phrased as the count it is:
+'282 filed meetings named this bill, from 5 organisations. That is what puts
+it here — not how important anyone thinks it is.' Importance is not something
+this pipeline can measure, and saying so is cheaper than implying otherwise.
+
+'What those meetings were about' is the OCL's own subject categories, joined
+through `Communication_SubjectMattersExport` and the code lookup. It is the
+registrants' categorisation of their own meetings, which is the only kind
+available.
+
+The index is ordered by most recent activity. Ordering by volume buried
+whatever Parliament is doing now under a finished bill from 2013.
+
+LEGISinfo renames its fields between releases, so every new field is read
+through an alias list and a bill page simply says less when a field is
+missing. A run that finds none of them still builds.
+

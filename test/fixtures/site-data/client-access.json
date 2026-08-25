@@ -1,0 +1,67 @@
+[
+  {
+    "client": "Business Council of Canada",
+    "slug": "business-council-of-canada",
+    "communications": 6,
+    "rows": 6,
+    "first_date": "2025-01-11",
+    "last_date": "2025-06-16",
+    "top_people": [
+      {
+        "name": "Nguyen, Mai",
+        "title": "Minister of Finance",
+        "other_titles": 2,
+        "office_key": "finance canada fin",
+        "office_label": "Finance Canada (FIN)",
+        "person_id": "p-1",
+        "status": "resolved",
+        "n": 3,
+        "first_date": "2025-01-11",
+        "last_date": "2025-05-15"
+      },
+      {
+        "name": "Okafor, Ada",
+        "title": "Assistant Deputy Minister",
+        "other_titles": 0,
+        "office_key": "health canada hc",
+        "office_label": "Health Canada (HC)",
+        "person_id": null,
+        "status": "unresolved",
+        "n": 3,
+        "first_date": "2025-02-12",
+        "last_date": "2025-06-16"
+      }
+    ],
+    "top_offices": [
+      {
+        "office_key": "finance canada fin",
+        "label": "Finance Canada (FIN)",
+        "n": 3
+      },
+      {
+        "office_key": "health canada hc",
+        "label": "Health Canada (HC)",
+        "n": 3
+      }
+    ],
+    "top_registrants": [
+      {
+        "registrant": "Vega, Adriana",
+        "n": 6
+      }
+    ],
+    "archived_meetings": 6
+  },
+  {
+    "client": "<script>alert(1)</script>",
+    "slug": "script-alert-1",
+    "communications": 2,
+    "rows": 2,
+    "first_date": "2024-01-01",
+    "last_date": "2024-02-02",
+    "top_people": [],
+    "top_offices": [],
+    "top_registrants": [],
+    "archived_meetings": 0
+  }
+]
