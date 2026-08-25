@@ -1,5 +1,78 @@
 [
-  { "office_key": "finance canada fin", "label": "Finance Canada (FIN)", "rows": 20, "communications": 18,
-    "first_date": "2008-07-03", "last_date": "2026-08-14", "median_filing_lag_days": 26,
-    "top_clients": [{ "client": "Canadian Bankers Association", "n": 9 }, { "client": "<script>alert(1)</script>", "n": 2 }] }
+  {
+    "office_key": "finance canada fin",
+    "label": "Finance Canada (FIN)",
+    "rows": 20,
+    "communications": 18,
+    "first_date": "2008-07-03",
+    "last_date": "2026-08-14",
+    "median_filing_lag_days": 26,
+    "top_clients": [
+      {
+        "client": "Canadian Bankers Association",
+        "n": 9
+      },
+      {
+        "client": "<script>alert(1)</script>",
+        "n": 2
+      }
+    ],
+    "people": [
+      {
+        "name": "Nguyen, Mai",
+        "title": "Minister of Finance",
+        "branch": null,
+        "person_id": "p-1",
+        "status": "resolved",
+        "meetings": 214,
+        "first_date": "2021-01-11",
+        "last_date": "2026-06-30",
+        "top_clients": [
+          {
+            "client": "Canadian Bankers Association",
+            "n": 31
+          },
+          {
+            "client": "Scotiabank",
+            "n": 22
+          }
+        ]
+      },
+      {
+        "name": "Verheul, Steve",
+        "title": "Chief Trade Negotiator",
+        "branch": "Trade Policy",
+        "person_id": null,
+        "status": "unresolved",
+        "meetings": 118,
+        "first_date": "2018-03-02",
+        "last_date": "2024-11-19",
+        "top_clients": [
+          {
+            "client": "Canadian Cattle Association",
+            "n": 19
+          }
+        ]
+      }
+    ],
+    "recent_meetings": [
+      {
+        "communication_id": "9001",
+        "date": "2026-06-30",
+        "posted_date": "2026-07-24",
+        "client": "Canadian Bankers Association",
+        "registrant": "Doe, John",
+        "officials": [
+          {
+            "name": "Nguyen, Mai",
+            "title": "Minister of Finance"
+          },
+          {
+            "name": "Smith, Ann",
+            "title": "Chief of Staff"
+          }
+        ]
+      }
+    ]
+  }
 ]

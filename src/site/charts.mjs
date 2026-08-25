@@ -105,7 +105,7 @@ export function meetingsOverTime({ links, stages, t, lang }) {
   const padL = 34;
   const padR = 12;
   const padT = 14;
-  const stageBand = 108;   // three label lanes plus the track
+  const stageBand = 34;    // the numbered track only; names go in a list below
   const height = padT + plotH + 26 + stageBand;
   const plotW = width - padL - padR;
   const bw = plotW / all.length;
@@ -148,30 +148,28 @@ export function meetingsOverTime({ links, stages, t, lang }) {
   const xForDate = (d) => padL + ((t2(d) - firstMs) / Math.max(lastMs - firstMs, DAY)) * plotW;
   const trackY = padT + plotH + 40;
 
-  const sorted = [...stages].filter((s2) => Number.isFinite(t2(s2.event_date)))
+  // A stage dated in year 1 is a null the source wrote as a date. It would
+  // otherwise anchor the whole axis at the left edge.
+  const plausible = (d) => Number.isFinite(t2(d)) && String(d) >= '1900-01-01';
+  const sorted = [...stages].filter((s2) => plausible(s2.event_date))
     .sort((a, b) => t2(a.event_date) - t2(b.event_date));
+  // A bill can take all six of its steps inside one week — C-5 took five in
+  // eleven days — and six labels inside one week is unreadable mush whatever
+  // the lane logic. So the track carries numbered dots, and the steps are named
+  // in a list under the chart, where they always have room.
   const stageTrack = `<line x1="${padL}" y1="${trackY}" x2="${width - padR}" y2="${trackY}" stroke="${SERIES.rule}" stroke-width="2" />`
-    + (() => {
-      // Steps two weeks apart put their labels on top of each other. Assign
-      // each label to the first lane whose previous label ends far enough to
-      // the left; three lanes is enough for six steps at any spacing.
-      const laneEnds = [-Infinity, -Infinity, -Infinity];
-      return sorted.map((s2) => {
-        const x = Math.min(Math.max(xForDate(s2.event_date), padL), width - padR);
-        const halfLabel = Math.max(stageName(s2.stage, lang).length * 3.4, 34);
-        let lane = laneEnds.findIndex((end) => x - halfLabel > end);
-        if (lane < 0) lane = laneEnds.indexOf(Math.min(...laneEnds));
-        laneEnds[lane] = x + halfLabel;
-        const ly = trackY + 18 + lane * 26;
+    + sorted.map((s2, i) => {
+      const x = Math.min(Math.max(xForDate(s2.event_date), padL), width - padR);
       return `<g>
         <title>${esc(stageName(s2.stage, lang))} — ${date(s2.event_date)}</title>
-        <line x1="${x.toFixed(1)}" y1="${padT}" x2="${x.toFixed(1)}" y2="${trackY}" stroke="${SERIES.rule}" stroke-width="1" stroke-dasharray="2 4" />
-        <circle cx="${x.toFixed(1)}" cy="${trackY}" r="5" fill="var(--panel)" stroke="${SERIES.ink}" stroke-width="2" />
-        <text x="${x.toFixed(1)}" y="${ly}" text-anchor="middle" class="stage-tick">${esc(stageName(s2.stage, lang))}</text>
-        <text x="${x.toFixed(1)}" y="${ly + 12}" text-anchor="middle" class="axis-label">${date(s2.event_date)}</text>
+        <line x1="${x.toFixed(1)}" y1="${padT}" x2="${x.toFixed(1)}" y2="${(trackY - 9).toFixed(1)}" stroke="${SERIES.rule}" stroke-width="1" stroke-dasharray="2 4" />
+        <circle cx="${x.toFixed(1)}" cy="${trackY}" r="9" fill="var(--panel)" stroke="${SERIES.ink}" stroke-width="2" />
+        <text x="${x.toFixed(1)}" y="${(trackY + 4).toFixed(1)}" text-anchor="middle" class="stage-tick">${i + 1}</text>
       </g>`;
-      }).join('\n');
-    })();
+    }).join('\n');
+
+  const stageList = sorted.map((s2, i) => `<li><span class="step-n">${i + 1}</span>
+    <strong>${esc(stageName(s2.stage, lang))}</strong> <span class="note">${date(s2.event_date)}</span></li>`).join('');
 
   const hidden = rows.filter((l) => stageReachedWhileUnpublished(l, stages)).length;
 
@@ -189,6 +187,7 @@ export function meetingsOverTime({ links, stages, t, lang }) {
     ${monthTicks}
     ${stageTrack}
   </svg>
+  <ol class="steps">${stageList}</ol>
   ${hidden ? `<p class="caveat"><strong>${num(hidden, lang)} ${esc(t.of)} ${num(rows.length, lang)}</strong> ${esc(t.chart_late_summary)}</p>` : ''}
 </figure>`;
 }

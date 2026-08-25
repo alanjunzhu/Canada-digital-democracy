@@ -176,3 +176,43 @@ test('the explainer counts come from the data, not from a typed sentence', async
   assert.match(p, /1,000 of them/);
   assert.doesNotMatch(p, /380,400/);
 });
+
+test('an office page names who was met, with the position as filed', async () => {
+  const p = await page('en/offices/finance-canada-fin.html');
+  assert.match(p, /Who lobbyists met here/);
+  assert.match(p, /Nguyen, Mai/);
+  assert.match(p, /Minister of Finance/);
+  assert.match(p, /Chief Trade Negotiator/);
+  // The count, the span of dates, and who was asking to see them.
+  assert.match(p, /214/);
+  assert.match(p, /2021-01-11 – 2026-06-30/);
+  assert.match(p, /Canadian Cattle Association/);
+});
+
+test('a person the resolver could not match is shown and labelled, not dropped', async () => {
+  // Most are public servants, who are correctly not MPs. Hiding them would
+  // hide the majority of who lobbyists actually meet.
+  const p = await page('en/offices/finance-canada-fin.html');
+  assert.match(p, /Verheul, Steve/);
+  assert.match(p, /not matched to a member/);
+});
+
+test('an office page lists whole meetings: who asked, who filed, who was met', async () => {
+  const p = await page('en/offices/finance-canada-fin.html');
+  assert.match(p, /Most recent meetings/);
+  assert.match(p, /Lobbyist who filed it: Doe, John/);
+  assert.match(p, /2026-06-30/);
+  assert.match(p, /2026-07-24/);          // and when the public could see it
+});
+
+test('a bill page shows every meeting, with the lobbyist and each official met', async () => {
+  const p = await page('en/bills/45-1-c-5.html');
+  // One row per filed meeting — counted by the lobbyist line, which every row
+  // in this table carries, rather than by date cells (a published date that
+  // crossed a step also carries a flag, so it is not a bare cell).
+  const rows = [...p.matchAll(/Lobbyist who filed it/g)].length;
+  assert.equal(rows, 3, 'all three fixture meetings, not a sample');
+  for (const d of ['2025-05-20', '2025-06-02', '2025-06-20']) assert.match(p, new RegExp(d));
+  assert.match(p, /Lobbyist who filed it/);
+  assert.match(p, /Nguyen, Mai<span class="note"> — Minister of Finance/);
+});

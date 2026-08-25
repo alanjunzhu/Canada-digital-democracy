@@ -101,6 +101,24 @@ function officesIndex({ lang, t, offices, generated }) {
 }
 
 function officePage({ lang, t, office, holdings, generated }) {
+  // Who was on the receiving end, with the position the lobbyist filed. A
+  // person the resolver could not match to a sitting member is shown anyway
+  // and labelled as unmatched — most of them are public servants, who are
+  // correctly not members.
+  const people = (office.people || []).map((p) => `<tr>
+    <td>${esc(p.name)}${p.person_id ? '' : `<div class="note">${esc(t.unmatched_person)}</div>`}</td>
+    <td>${esc(p.title || '—')}${p.branch ? `<div class="note">${esc(p.branch)}</div>` : ''}</td>
+    <td class="n">${num(p.meetings, lang)}</td>
+    <td class="n">${date(p.first_date)} – ${date(p.last_date)}</td>
+    <td>${(p.top_clients || []).slice(0, 3).map((c) => `<div>${esc(c.client)} <span class="note">${num(c.n, lang)}</span></div>`).join('') || '—'}</td>
+  </tr>`).join('\n');
+
+  const meetings = (office.recent_meetings || []).map((m) => `<tr>
+    <td class="n">${date(m.date)}</td>
+    <td class="n">${date(m.posted_date)}</td>
+    <td>${esc(m.client || '—')}${m.registrant ? `<div class="note">${esc(t.meeting_lobbyist)}: ${esc(m.registrant)}</div>` : ''}</td>
+    <td>${(m.officials || []).map((o) => `<div>${esc(o.name)}${o.title ? `<span class="note"> — ${esc(o.title)}</span>` : ''}</div>`).join('') || '—'}</td>
+  </tr>`).join('\n');
   const clients = (office.top_clients || []).map((c) => `<tr>
     <td>${esc(c.client)}</td><td class="n">${num(c.n, lang)}</td>
   </tr>`).join('\n');
@@ -133,6 +151,23 @@ ${held ? `<h2>${esc(t.who_held)}</h2>
   <tr><th>${esc(t.office_clients)}</th><th class="n">${esc(t.office_meetings)}</th></tr>
   ${clients || `<tr><td colspan="2" class="note">—</td></tr>`}
 </table>
+
+${people ? `<h2>${esc(t.people_title)}</h2>
+<p class="note">${esc(t.people_note)}</p>
+<table>
+  <tr><th>${esc(t.people_person)}</th><th>${esc(t.people_position)}</th>
+      <th class="n">${esc(t.people_meetings)}</th><th class="n">${esc(t.people_active)}</th>
+      <th>${esc(t.people_asked)}</th></tr>
+  ${people}
+</table>` : ''}
+
+${meetings ? `<h2>${esc(t.meetings_title)}</h2>
+<p class="note">${esc(t.meetings_note)}</p>
+<table>
+  <tr><th class="n">${esc(t.bill_date)}</th><th class="n">${esc(t.chart_published)}</th>
+      <th>${esc(t.meeting_who_asked)}</th><th>${esc(t.meeting_met)}</th></tr>
+  ${meetings}
+</table>` : ''}
 <p class="note"><a href="index.html">← ${esc(t.back)}</a></p>`,
   });
 }
@@ -164,15 +199,23 @@ function billPage({ lang, t, bill, links = [], generated }) {
   const stages = bill.stages || [];
   // The table is the chart's accessible twin, and the place the exact dates
   // live. Both are built from the same rows.
-  const tableRows = links.slice(0, 60).map((l) => {
-    const crossed = stageReachedWhileUnpublished(l, stages);
-    return `<tr>
+  // Every meeting, newest first — not a sample. The record is the point.
+  const tableRows = [...links]
+    .sort((a, b) => String(b.comm_date).localeCompare(String(a.comm_date)))
+    .map((l) => {
+      const crossed = stageReachedWhileUnpublished(l, stages);
+      const officials = (l.officials?.length
+        ? l.officials
+        : [{ name: l.official_label, title: null }]).filter((o) => o.name);
+      return `<tr>
       <td class="n">${date(l.comm_date)}</td>
-      <td class="n">${date(l.posted_date)}${crossed ? ' <strong title="' + esc(t.chart_late_note) + '">▲</strong>' : ''}</td>
-      <td>${esc(l.client_name || '—')}</td>
-      <td>${esc(l.official_label || '—')}</td>
+      <td class="n">${date(l.posted_date)}${crossed ? ` <span class="flag" title="${esc(t.chart_hidden_short)}">▲</span>` : ''}</td>
+      <td>${esc(l.client_name || '—')}${l.registrant_name ? `<div class="note">${esc(t.meeting_lobbyist)}: ${esc(l.registrant_name)}</div>` : ''}</td>
+      <td>${officials.length
+        ? officials.map((o) => `<div>${esc(o.name)}${o.title ? `<span class="note"> — ${esc(o.title)}</span>` : ''}${o.branch ? `<span class="note">, ${esc(o.branch)}</span>` : ''}</div>`).join('')
+        : '—'}</td>
     </tr>`;
-  }).join('\n');
+    }).join('\n');
   const stageBlocks = (bill.stages || []).map((s) => `<div class="stage${s.communications ? ' busy' : ''}">
   <h3>${esc(stageName(s.stage, lang))} — ${date(s.event_date)}</h3>
   <p class="note">${esc(t.bill_before)} ${num(s.window_days, lang)} ${esc(t.days)}:
@@ -197,10 +240,10 @@ ${meetingsOverTime({ links, stages, t, lang })}
 ${stageBlocks || `<p class="note">—</p>`}
 
 ${tableRows ? `<h2>${esc(t.bill_before)}</h2>
-<p class="note">${esc(UNTRANSLATED[lang])}</p>
+<p class="note">${esc(t.meeting_all)} ${esc(UNTRANSLATED[lang])}</p>
 <table>
   <tr><th class="n">${esc(t.bill_date)}</th><th class="n">${esc(t.chart_published)}</th>
-      <th>${esc(t.bill_clients)}</th><th>${esc(t.bill_officials)}</th></tr>
+      <th>${esc(t.meeting_who_asked)}</th><th>${esc(t.meeting_met)}</th></tr>
   ${tableRows}
 </table>` : ''}
 <p class="note"><a href="index.html">← ${esc(t.back)}</a></p>`,

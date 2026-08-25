@@ -124,6 +124,8 @@ tr:last-child td { border-bottom: 0; }
 td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 a { color: var(--accent); }
 .note { color: var(--muted); font-size: 0.85rem; }
+.flag { color: var(--series-late); font-weight: 700; }
+td .note { font-size: 0.8rem; }
 .stage { border-left: 3px solid var(--rule); padding: 0.2rem 0 0.2rem 1rem; margin: 0 0 1.2rem; }
 .stage h3 { margin: 0 0 0.2rem; font-size: 1rem; }
 .stage.busy { border-left-color: var(--accent); }
@@ -140,6 +142,12 @@ footer p { margin: 0 0 0.35rem; max-width: 62rem; }
 .legend .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px;
   margin-right: 0.4rem; vertical-align: -1px; }
 .stage-tick { font-size: 11px; fill: var(--muted); font-weight: 600; }
+.steps { list-style: none; display: flex; flex-wrap: wrap; gap: 0.3rem 1.4rem;
+  margin: 0.7rem 0 0; padding: 0; font-size: 0.9rem; }
+.steps li { display: flex; align-items: baseline; gap: 0.4rem; }
+.step-n { display: inline-flex; align-items: center; justify-content: center;
+  width: 1.25rem; height: 1.25rem; border: 1px solid var(--rule); border-radius: 50%;
+  font-size: 0.72rem; color: var(--muted); flex: none; }
 .axis-label { font-size: 11px; fill: var(--muted); }
 .explainer { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px;
   padding: 0.2rem 1.1rem 0.9rem; margin: 0 0 2rem; }

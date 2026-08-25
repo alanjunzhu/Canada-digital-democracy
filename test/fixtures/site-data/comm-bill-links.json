@@ -1,11 +1,56 @@
 [
-  { "communication_id": "1", "bill_id": "45-1/C-5", "method": "citation", "confidence": 0.95,
-    "comm_date": "2025-05-20", "posted_date": "2025-06-15", "client_name": "Business Council of Canada",
-    "registrant_name": "Doe, John", "official_label": "Smith, Ann — Chief of Staff" },
-  { "communication_id": "2", "bill_id": "45-1/C-5", "method": "citation", "confidence": 0.95,
-    "comm_date": "2025-06-02", "posted_date": "2025-06-04", "client_name": "Assembly of First Nations",
-    "registrant_name": "Roe, Jane", "official_label": "Tremblay, Luc — Policy Advisor" },
-  { "communication_id": "3", "bill_id": "45-1/C-5", "method": "citation", "confidence": 0.95,
-    "comm_date": "2025-06-20", "posted_date": "2025-07-30", "client_name": "<b>Escapes</b> Ltd",
-    "registrant_name": "Poe, Ed", "official_label": "Nguyen, Mai — Minister of Finance" }
+  {
+    "communication_id": "1",
+    "bill_id": "45-1/C-5",
+    "method": "citation",
+    "confidence": 0.95,
+    "comm_date": "2025-05-20",
+    "posted_date": "2025-06-15",
+    "client_name": "Business Council of Canada",
+    "registrant_name": "Doe, John",
+    "official_label": "Smith, Ann \u2014 Chief of Staff",
+    "officials": [
+      {
+        "name": "Nguyen, Mai",
+        "title": "Minister of Finance",
+        "branch": null
+      }
+    ]
+  },
+  {
+    "communication_id": "2",
+    "bill_id": "45-1/C-5",
+    "method": "citation",
+    "confidence": 0.95,
+    "comm_date": "2025-06-02",
+    "posted_date": "2025-06-04",
+    "client_name": "Assembly of First Nations",
+    "registrant_name": "Roe, Jane",
+    "official_label": "Tremblay, Luc \u2014 Policy Advisor",
+    "officials": [
+      {
+        "name": "Nguyen, Mai",
+        "title": "Minister of Finance",
+        "branch": null
+      }
+    ]
+  },
+  {
+    "communication_id": "3",
+    "bill_id": "45-1/C-5",
+    "method": "citation",
+    "confidence": 0.95,
+    "comm_date": "2025-06-20",
+    "posted_date": "2025-07-30",
+    "client_name": "<b>Escapes</b> Ltd",
+    "registrant_name": "Poe, Ed",
+    "official_label": "Nguyen, Mai \u2014 Minister of Finance",
+    "officials": [
+      {
+        "name": "Nguyen, Mai",
+        "title": "Minister of Finance",
+        "branch": null
+      }
+    ]
+  }
 ]

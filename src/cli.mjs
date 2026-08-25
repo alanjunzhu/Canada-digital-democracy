@@ -284,6 +284,7 @@ switch (cmd) {
           communications: new Set(),
           clients: new Map(),
           people: new Map(),
+          meetings: new Map(),
           years: new Map(),
           first_date: null,
           last_date: null,
@@ -291,9 +292,60 @@ switch (cmd) {
         });
       }
       const o = officeAgg.get(key);
-      const label = dpohRows[i].institution || res.office_title || key;
+      const row = dpohRows[i];
+      const label = row.institution || res.office_title || key;
       o.labels.set(label, (o.labels.get(label) || 0) + 1);
       o.rows++;
+
+      // The people named at this office, with the position as filed. An
+      // office page that lists only the lobbying side answers half the
+      // question: who at the office was being met matters as much as who was
+      // asking.
+      const who = row.dpoh_raw && row.dpoh_raw.trim();
+      if (who) {
+        const pk = `${who}|${row.dpoh_title_raw || ''}`;
+        if (!o.people.has(pk)) {
+          o.people.set(pk, {
+            name: who,
+            title: row.dpoh_title_raw || null,
+            branch: row.branch || null,
+            person_id: res.person_id || null,
+            status: res.status,
+            meetings: 0,
+            clients: new Map(),
+            first_date: null,
+            last_date: null,
+          });
+        }
+        const person = o.people.get(pk);
+        person.meetings++;
+        if (!person.person_id && res.person_id) person.person_id = res.person_id;
+        const cname = commById.get(dpohRows[i].communication_id)?.client_name;
+        if (cname) person.clients.set(cname, (person.clients.get(cname) || 0) + 1);
+        const pd = dateById.get(dpohRows[i].communication_id);
+        if (pd) {
+          if (!person.first_date || pd < person.first_date) person.first_date = pd;
+          if (!person.last_date || pd > person.last_date) person.last_date = pd;
+        }
+      }
+
+      // One entry per communication, carrying everyone named on it.
+      if (!o.meetings.has(commId)) {
+        const c = commById.get(commId);
+        o.meetings.set(commId, {
+          communication_id: commId,
+          date: dateById.get(commId) || null,
+          posted_date: isoDate(c?.posted_date),
+          client: c?.client_name || null,
+          registrant: [c?.registrant_surname, c?.registrant_given].filter(Boolean).join(', ') || null,
+          officials: [],
+        });
+      }
+      if (who) {
+        o.meetings.get(commId).officials.push({
+          name: who, title: row.dpoh_title_raw || null, branch: row.branch || null,
+        });
+      }
       o.communications.add(commId);
       const client = comm?.client_name || null;
       if (client) o.clients.set(client, (o.clients.get(client) || 0) + 1);
@@ -327,9 +379,23 @@ switch (cmd) {
         median_filing_lag_days: medianOf(o.lags),
         by_year: Object.fromEntries([...o.years.entries()].sort()),
         top_clients: [...o.clients.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15).map(([client, n]) => ({ client, n })),
+        people: [...o.people.values()]
+          .sort((a, b) => b.meetings - a.meetings)
+          .slice(0, 40)
+          .map((pp) => ({
+            ...pp,
+            clients: undefined,
+            top_clients: [...pp.clients.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([client, n]) => ({ client, n })),
+          })),
+        recent_meetings: [...o.meetings.values()]
+          .sort((a, b) => String(b.date).localeCompare(String(a.date)))
+          .slice(0, 80),
       }))
       .sort((a, b) => b.communications - a.communications);
-    await write('office-access.json', officeAccess.slice(0, 300));
+    // Detail is written only for the offices the site renders; the long tail
+    // keeps its counts without carrying eighty meetings each.
+    await write('office-access.json', officeAccess.slice(0, 300).map((o, i) => (i < 150 ? o
+      : { ...o, people: o.people.slice(0, 10), recent_meetings: [] })));
 
     const report = summarize(results);
     // Offices get their own coverage report: 'which chairs did we fail to
@@ -557,9 +623,20 @@ Q4  DPOH row shape
     const officialsByComm = new Map();
     for (const r of dpohRows) {
       if (!officialsByComm.has(r.communication_id)) officialsByComm.set(r.communication_id, []);
-      officialsByComm.get(r.communication_id).push([r.dpoh_raw, r.dpoh_title_raw].filter(Boolean).join(' — '));
+      // Structured, not flattened into one string: the page shows the name and
+      // the position separately, and 'who they met' is the question the whole
+      // join exists to answer.
+      officialsByComm.get(r.communication_id).push({
+        name: r.dpoh_raw || null,
+        title: r.dpoh_title_raw || null,
+        institution: r.institution || null,
+        branch: r.branch || null,
+      });
     }
-    for (const l of links) l.official_label = (officialsByComm.get(l.communication_id) || []).join(' | ') || null;
+    for (const l of links) {
+      l.officials = officialsByComm.get(l.communication_id) || [];
+      l.official_label = l.officials.map((o) => [o.name, o.title].filter(Boolean).join(' — ')).join(' | ') || null;
+    }
 
     const byBill = new Map();
     for (const l of links) byBill.set(l.bill_id, (byBill.get(l.bill_id) || 0) + 1);
