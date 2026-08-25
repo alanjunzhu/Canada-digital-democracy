@@ -213,10 +213,24 @@ answered several things that fixtures could not:
 
 ## Not yet built
 
+- **Real appointment dates.** The office roster is derived from the filings, so
+  every holding is an observation window rather than a term of office. Privy
+  Council records would fix this; they are not published as a bulk file.
+  Curated rows always beat derived ones, so this is transcription work, not
+  code.
+- **166 contested office windows** — two people named in the same office at
+  once, because a handover happened mid-month. They resolve as ambiguous, which
+  is correct but not informative.
+- **The subject-code join.** SMT-xx codes are matched but not yet used on the
+  site; `Codes_SubjectMatterTypesExport.csv` turns them into words, which would
+  give the 99.4% of communications that name no bill something honest to say.
 - Deputy-minister and departmental staff offices are keyed off the department
   name, which is not a portfolio; those keys only match a roster row carrying
   the same institution string.
-- No UI. Deliberately: the coverage number from `npm run resolve` should decide
-  what the UI is for.
-- No bilingual layer. The source data is bilingual; this pipeline keeps English
-  field names, and any UI must be EN/FR from the start.
+
+## Built since this file was last a to-do list
+
+The three items that used to sit here are done, and the record of how they went
+is above: the UI exists and is bilingual from the first page, and the coverage
+number that was supposed to decide what it was for did exactly that — 26.4%
+naming an MP is why the site is organised around offices rather than members.

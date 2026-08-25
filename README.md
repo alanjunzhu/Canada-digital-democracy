@@ -1,13 +1,15 @@
 # Canada digital democracy — *lobby-to-law*
 
-A sketch of the data spine for a Canadian federal transparency site: joining the
-**Office of the Commissioner of Lobbying's monthly communication reports** to
-**federal legislation**, so you can ask *who was in the room in the weeks before
-a bill moved*.
+**Who gets to talk to the Canadian government, and how long before the rest of
+us find out.**
 
-This is the pipeline only — schema, ingest, entity resolution, and the timeline
-join. There is no UI yet, on purpose: the entity resolution is the part that
-decides whether the product is possible, so it gets built and measured first.
+Under the Lobbying Act, every arranged conversation between a lobbyist and a
+designated public office holder has to be filed monthly and published. This
+project takes those filings — 380,400 of them, going back to 2008 — resolves
+who was actually in the room, joins them to the bills they name, and publishes
+the result as a bilingual static site.
+
+It runs on GitHub's servers on a monthly schedule. Nothing runs on a laptop.
 
 ## Why this and not a trading tracker
 
@@ -18,83 +20,64 @@ no dates**. There is nothing to chart and no timing to analyze. Trying anyway
 produces insinuation dressed as data.
 
 What Canada does publish, and the US does not, is **who lobbied whom, by name,
-on what date**. Under the Lobbying Act every oral, arranged communication with a
-Designated Public Office Holder is filed monthly, naming the lobbyist, the
-client, the official, the institution and the subject. That is a timestamped
-record of access to power, and it joins cleanly to bill stages.
+on what date**. That is a timestamped record of access, and it joins cleanly to
+the dates bills moved.
 
 ## What the data says (measured, not assumed)
 
 | | |
 |---|---|
-| communications in the file | 380,400 (2008-07-02 → 2026-08-20) |
-| DPOH rows | 581,694 |
-| name a sitting member | **26.4%** — most logged access is with staff, not MPs |
-| cite a bill number | **0.64%** of all communications (3.4% of those carrying subject text) |
-| median filing lag, meeting → public | **26 days** (p90 42) |
+| communications in the record | 380,400 (2008-07-02 → 2026-08-20) |
+| official-rows across them | 581,694 |
+| name a sitting MP | **26.4%** — most logged access is with staff and public servants |
+| name a specific bill | **0.64%** of all communications (3.4% of those carrying any subject text) |
+| median wait before publication | **26 days** (p90 42) |
+| records matched to a person or an office | **95%** |
 
-Those numbers set what this can honestly be: a record of access to *offices*,
-where per-bill claims are possible for the ~114 bills registrants actually
-name, and everything else is subject-area context. See `NOTES.md` for the
-thresholds these were tested against — written down before the numbers were
-known.
+Two of those tripped thresholds that were written down in `NOTES.md` *before*
+the numbers were known, and both changed what this is:
 
-## The question this answers
+- Under 40% naming an MP means **the unit of the product is the office**, not
+  the member. Hence office pages rather than MP pages.
+- Under 5% naming a bill means **the per-bill view cannot be the spine**. It
+  exists for the ~130 bills registrants actually name; everything else is
+  subject-area context, labelled as context.
 
-For each bill, for each stage (first reading, second reading, committee referral,
-committee report, third reading, royal assent): which lobbying communications
-happened in the window immediately before it, on behalf of whom, with which
-officials — and how long afterwards the public found out.
+## The site
 
-That last number matters. Communications are filed monthly, so the meeting
-before clause-by-clause becomes public well after the vote. The filing lag is
-the Canadian analogue of a disclosure lag: it measures how much of the access
-happened while nobody could see it.
+Built by the same run that processes the data, published to GitHub Pages:
+<https://alanjunzhu.github.io/Canada-digital-democracy/>
 
-## Status: what is verified and what is not
+- **Home** — what lobbying is, in plain words, then the four numbers.
+- **Offices** — every part of government ranked by meetings logged, with who
+  was named in each and when.
+- **Bills** — for each bill registrants named: meetings per month, split by
+  whether the public could see them yet when the bill took its next step.
+- **Method** — what the record cannot tell you, before what it can.
 
-| Piece | State |
-|---|---|
-| Name normalization (accents, compounds, particles, nicknames, initials) | **verified**, 27 unit tests |
-| DPOH string parsing (MP vs. minister vs. staff vs. role-only) | **verified** against realistic fixtures |
-| Temporal resolution (match against who held the seat *on the date*) | **verified** against fixtures |
-| Bill citation extraction + session scoping | **verified** |
-| Timeline / pre-stage windows | **verified** |
-| Office keys from role strings (EN/FR, staff vs. principal vs. parl. sec.) | **verified**, 8 unit tests |
-| Office resolution (which chair, held by whom, on the date) | **verified** against fixtures |
-| **The office roster itself** (`data/overrides/office-holders.json`) | **empty** — hand-curated, see below |
-| Four-question stats report (`npm run stats`) | **verified** against fixtures |
-| Member roster from ourcommons.ca | **verified live in CI** — 346 members returned for the 45th |
-| Bill list from LEGISinfo | **verified live in CI** — 185 bills returned for 45-1 |
-| Bill stage dates from LEGISinfo | **fixed against the live shape**, re-verified each CI run |
-| OCL column names + encoding | **verified against the real exports** (cp1252; DPOH names arrive structured) |
-| The four questions | **all answered** on 380,400 communications — see NOTES.md |
+English and French are separate trees, generated together. The pages are static
+HTML with inline SVG: no framework, no build step, no runtime JavaScript, and
+no dependencies at all — `package.json` has none.
 
-The environment this was written in blocks egress to `lobbycanada.gc.ca`,
-`open.canada.ca`, `parl.ca` and `ourcommons.ca`. Every unverified piece is
-written as an **alias list** in `src/config/sources.mjs` and validated at
-ingest: a mismatch raises a hard error naming the real headers, instead of
-silently producing a table of `undefined` that looks like sparse data.
+## How it runs
 
-## Where this runs
+`.github/workflows/pipeline.yml`, monthly on the 5th and on every push to
+`main`:
 
-**On GitHub's runners, not on a laptop.** `.github/workflows/pipeline.yml`
-downloads the sources, probes the real column headers, answers the four
-questions in `NOTES.md`, and reports resolution coverage — writing all of it
-into the run's job summary, with `data/out/*.json` and the logs attached as
-artifacts. Trigger it from the Actions tab, or let the monthly schedule run it
-(the OCL republishes the bulk files monthly; anything more frequent just
-re-downloads the same file).
+```
+tests → mirror → download → probe headers → the four questions
+      → members + bills → derive offices → link citations → timelines
+      → resolution coverage → build site → publish
+```
 
-That is also the only place this code has ever met real data, which is why the
-status table above distinguishes *verified against fixtures* from *verified
-live in CI*.
+Every step writes into the run's job summary, and the headline numbers are
+printed last so the end of the log is the answer. `data/out/*.json`, the logs,
+and the built site are attached as artifacts.
 
 ### The one thing CI cannot fetch
 
 `lobbycanada.gc.ca` refuses GitHub's runners outright. Not a header problem —
-the run proves it every time it fails, by re-requesting the same URL with four
-different clients:
+the run proves it by re-requesting the same URL with four different clients:
 
 ```
 node-fetch      -> 403
@@ -103,62 +86,48 @@ curl-default-ua -> 403
 wget            -> (refused)
 ```
 
-Everything else (the Open Government catalogue, LEGISinfo, ourcommons.ca)
-answers the runner normally; it is only the OCL's own media host, which appears
+Everything else — the Open Government catalogue, LEGISinfo, ourcommons.ca —
+answers the runner normally. It is only the OCL's own media host, which appears
 to refuse datacentre traffic. No user agent fixes that, and this project is not
 going to pretend to be a browser to get around it.
 
-**The way through, in ~2 minutes a month:** download the zip from
-<https://lobbycanada.gc.ca/en/open-data/> in a normal browser and attach it to
-a release on this repo tagged `ocl-data`. Every run pulls that asset before it
-tries the live download, unzips it, and identifies the files by their headers —
-so nothing else about the pipeline changes, and the day the host starts serving
-runners the mirror simply stops being used. Alternatively, set the repository
-variable `OCL_ZIP_URL` to any URL the runner can reach.
+**The way through, about two minutes a month:** download the zip from
+<https://lobbycanada.gc.ca/en/open-data/> in a normal browser and attach it to a
+release on this repo tagged `ocl-data`. Every run pulls that asset before it
+tries the live download, unzips it, and identifies the files by their headers.
+The day the host starts serving runners, the mirror stops being used on its own.
+Alternatively, point the repository variable `OCL_ZIP_URL` at any URL the runner
+can reach.
 
-## Running it locally instead
-
-```bash
-# Fetch the bulk files through the Open Government catalogue. The OCL portal's
-# own download links are hash-pathed and rotate every publication, so the
-# catalogue's package id is the stable handle.
-npm run fetch:lobbying
-
-# Then confirm the column mapping against the real headers.
-npm run probe -- --comms data/raw/communications.csv --dpoh data/raw/communication_dpoh.csv
-```
-
-`probe` prints the real headers beside what the config expects. Add any missing
-spellings to the alias lists, then:
+## Commands
 
 ```bash
-# The four questions in NOTES.md, in one pass. Run this BEFORE building anything.
-npm run stats -- --comms data/raw/communications.csv --dpoh data/raw/communication_dpoh.csv
+npm test                 # 111 unit tests, no network
 
-npm run fetch:members -- --parliament 45
-npm run fetch:bills   -- --session 45-1
-npm run resolve       -- --dpoh data/raw/communication_dpoh.csv --comms data/raw/communications.csv
+npm run fetch:lobbying   # OCL bulk files via the Open Government catalogue
+npm run probe            # real column headers, and the file's encoding, vs. what config expects
+npm run stats            # the four questions, in one pass
+npm run fetch:members -- --parliaments 39,40,41,42,43,44,45
+npm run fetch:bills   -- --sessions 39-1,40-1,41-1,42-1,43-1,44-1,45-1
+npm run derive:offices   # build the office roster out of the filings themselves
+npm run link             # citations -> session-scoped bills
+npm run timeline         # pre-stage access windows
+npm run resolve          # entity resolution + coverage report
+npm run site             # build the EN/FR static site into ./site
+npm run offices          # validate the office roster
+npm run probe:members    # which roster endpoint knows the names that failed
 ```
 
-`resolve` also reads the ministerial roster at `data/overrides/office-holders.json`,
-which ships empty. Validate it any time with:
-
-```bash
-npm run offices        # prints every office, its intervals, and any overlap or bad date
-```
-
-`resolve` writes `data/out/resolution-report.json`, which is the tractability
-answer: percent resolved, percent ambiguous, and the 25 most frequent strings
-that failed. **Read the failures before building any UI.** If a handful of
-repeated strings account for most misses, they go in
-`data/overrides/dpoh-aliases.json` and coverage jumps. If the failures are a long
-unique tail, the join needs more than name matching.
+Commands find their inputs through `data/out/download-manifest.json`, which
+records which downloaded CSV is which — decided by reading each file's headers,
+not by trusting its name.
 
 ## Design rules that are not negotiable
 
 1. **Never guess silently.** A surname shared by two sitting MPs returns
    `ambiguous` with its candidates, not a best guess. Publishing the wrong MP
-   beside a lobbying record is the one unrecoverable error here.
+   beside a lobbying record is the one unrecoverable error here. On the full
+   record this costs 0.8% of rows, and it is worth it.
 2. **Time is part of identity.** `Smith, John, MP` in 2019 and in 2026 may be
    different people. Candidates are filtered to those actually holding the seat
    on the communication date; nothing falls back to the current roster.
@@ -169,39 +138,62 @@ unique tail, the join needs more than name matching.
    resolver output lives in a separate table so it can be recomputed and diffed.
 5. **A staff meeting is not a minister's meeting.** A row naming 'Chief of
    Staff, Office of the Minister of Finance' resolves to the *office*: the
-   individual stays unnamed (`person_id` null) and the minister is recorded
-   separately as `principal_person_id`. 'The minister's office met the
-   registrant' and 'the minister met the registrant' are different facts, and
-   the pipeline never collapses the first into the second.
-6. **A logged meeting is not wrongdoing.** Lobbying is legal and registration is
-   the system working. The product shows access and timing; it does not imply a
-   finding. Any UI built on this must say so on the page.
+   individual stays unnamed and the minister is recorded separately as
+   `principal_person_id`. Those are different facts and are never collapsed.
+6. **Office holders are observed, not appointed.** The roster is derived from
+   the filings, so a holding says 'named as Minister of X in filings dated A to
+   B'. It does not say they took office on A. Every derived row carries
+   `source: 'observed'` and says so on the page.
+7. **Access is not influence.** The record shows who met whom and when. It
+   cannot show what was said or whether anyone got what they asked for, and no
+   chart on the site is allowed to imply otherwise.
+8. **A logged meeting is not wrongdoing.** Lobbying is legal and registering it
+   is the system working. Every page footer says so.
+
+## What the files themselves taught us
+
+Things no amount of reading the documentation would have produced:
+
+- **The exports are Windows-1252, not UTF-8.** Decoding as UTF-8 does not throw,
+  it silently replaces every accent — `Thériault` stops matching the roster.
+- **Officials' names arrive structured**, in separate surname / given / title
+  columns, so the resolver never has to guess where a name ends.
+- **Titles are typed by hand.** 'Member of Parliment' (sic) appears 1,000 times,
+  'M.P.' 378, 'ADM' 2,561.
+- **The literal string `null` was the busiest lobbying client in Canada**, 1,712
+  times, until ingest started treating it as empty.
+- **83% of staff rows name an institution, not a portfolio** — which is why the
+  office, not the minister, is the unit that attaches.
 
 ## Layout
 
 ```
-schema/schema.sql          canonical model (person, mp_term, communication,
-                           communication_dpoh, dpoh_link, bill, bill_event,
-                           comm_bill_link, v_pre_stage_access)
-src/normalize/names.mjs    diacritics, compounds, particles, nicknames
-src/normalize/officials.mjs DPOH string -> person or role
-src/match/resolve.mjs      temporal candidate scoring + coverage report
-src/match/bill-refs.mjs    citation extraction, session scoping
-src/match/timeline.mjs     pre-stage access windows + filing lag
-src/fetch/                 LEGISinfo, ourcommons XML, OCL CSV ingest
-src/config/sources.mjs     endpoints, column aliases, session table
+.github/workflows/pipeline.yml   the whole thing, monthly
+schema/schema.sql                canonical model
+src/config/sources.mjs           endpoints, column aliases, session table
+src/lib/csv.mjs                  encoding detection + CSV parsing
+src/lib/http.mjs                 retries, streaming download, transport probe
+src/fetch/                       OCL bulk, LEGISinfo, ourcommons XML, ingest
+src/normalize/names.mjs          diacritics, compounds, particles, nicknames, typos
+src/normalize/officials.mjs      DPOH row -> person or role
+src/normalize/roles.mjs          role text -> canonical office key (EN/FR)
+src/match/resolve.mjs            temporal candidate scoring + coverage report
+src/match/office.mjs             office resolution against a dated roster
+src/match/derive-offices.mjs     the roster, derived from the filings
+src/match/bill-refs.mjs          citation extraction, session scoping
+src/match/timeline.mjs           pre-stage access windows + filing lag
+src/site/                        the static site: strings (EN/FR), charts, pages
 ```
 
 ## Known gaps
 
-- **Ministerial staff are unattributable.** A large share of communications name
-  a staffer or a bare role. They are classified as `not_a_person` and roll up
-  under the minister's office rather than a person. That is a reporting choice
-  worth making visible in the UI.
-- **`office_holding` is unpopulated.** Minister and parliamentary-secretary
-  appointment dates need a source (Privy Council appointment records); until
-  then, role-based communications cannot be attributed to a named person.
-- **The `category` link method is weak.** Subject-matter category + time window
-  is context, not evidence. Only `citation` links should ever be stated as fact.
-- **No bilingual layer.** The data is bilingual; this pipeline keeps English
-  field names. Any UI must be EN/FR from the start.
+- **The bill join is thin by nature.** 0.64% of communications name a bill. The
+  per-bill pages are real for those; nothing else can be presented that way.
+- **Office holders are observation windows.** Real appointment dates would come
+  from Privy Council records, which are not published as a bulk file. Curated
+  rows in `data/overrides/office-holders.json` always beat derived ones, so
+  transcribing them improves the site without changing any code.
+- **166 office windows are contested** — two people named in the same office at
+  once, because a handover happened mid-month. Those resolve as ambiguous.
+- **The subject-category join is context, not evidence.** Only `citation` links
+  should ever be stated as fact.
