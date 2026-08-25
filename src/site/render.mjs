@@ -19,6 +19,64 @@ export const pct = (n) => (n === null || n === undefined ? '—' : `${n}%`);
 /** A date as filed. Kept ISO: it is a record, not prose. */
 export const date = (d) => (d ? esc(String(d).slice(0, 10)) : '—');
 
+/**
+ * Filter box for a table. The rows are all in the HTML already — this only
+ * hides the ones that do not match, so the page works with JavaScript turned
+ * off, prints whole, and is fully readable to a crawler. That is also why the
+ * filter is per page rather than across the archive: a static page cannot
+ * search what it has not been sent.
+ */
+export function filterBox({ t, targetId }) {
+  return `<div class="filter">
+  <label for="q-${targetId}">${esc(t.filter_label)}</label>
+  <input id="q-${targetId}" type="search" autocomplete="off" data-filter="${targetId}"
+         placeholder="${esc(t.filter_example)}">
+  <span class="note" id="count-${targetId}">${esc(t.filter_all)}</span>
+  <p class="note">${esc(t.filter_hint)}</p>
+</div>
+<script>
+(function () {
+  var input = document.getElementById('q-${targetId}');
+  var table = document.getElementById('${targetId}');
+  var count = document.getElementById('count-${targetId}');
+  if (!input || !table) return;
+  var rows = Array.prototype.slice.call(table.tBodies[0].rows);
+  var all = ${JSON.stringify(t.filter_all)};
+  var showing = ${JSON.stringify(t.filter_showing)};
+  input.addEventListener('input', function () {
+    var q = input.value.trim().toLowerCase();
+    var shown = 0;
+    for (var i = 0; i < rows.length; i++) {
+      var hit = !q || rows[i].textContent.toLowerCase().indexOf(q) !== -1;
+      rows[i].hidden = !hit;
+      if (hit) shown++;
+    }
+    count.textContent = q ? showing + ' ' + shown + ' / ' + rows.length : all;
+  });
+})();
+</script>`;
+}
+
+/** Page links for a paginated list. Plain links: no JS, no history games. */
+export function pager({ t, pages, current, href }) {
+  if (pages <= 1) return '';
+  const nums = [];
+  for (let i = 1; i <= pages; i++) {
+    // First, last, and a window around the current page — a 374-page office
+    // must not print 374 links.
+    if (i === 1 || i === pages || Math.abs(i - current) <= 2) {
+      nums.push(i === current
+        ? `<strong aria-current="page">${i}</strong>`
+        : `<a href="${esc(href(i))}">${i}</a>`);
+    } else if (nums[nums.length - 1] !== '…') nums.push('…');
+  }
+  return `<nav class="pager" aria-label="${esc(t.page)}">
+    ${current > 1 ? `<a href="${esc(href(current - 1))}">← ${esc(t.prev_page)}</a>` : ''}
+    ${nums.join(' ')}
+    ${current < pages ? `<a href="${esc(href(current + 1))}">${esc(t.next_page)} →</a>` : ''}
+  </nav>`;
+}
+
 export function layout({ lang, t, title, depth = 0, body, generated }) {
   // Two different roots, and conflating them broke every link in the nav:
   //   assets -> the SITE root, where style.css lives
@@ -125,6 +183,16 @@ td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space:
 a { color: var(--accent); }
 .note { color: var(--muted); font-size: 0.85rem; }
 .flag { color: var(--series-late); font-weight: 700; }
+.filter { margin: 0 0 1rem; }
+.filter label { font-size: 0.85rem; color: var(--muted); margin-right: 0.5rem; }
+.filter input { font: inherit; padding: 0.4rem 0.6rem; border: 1px solid var(--rule);
+  border-radius: 6px; background: var(--panel); color: var(--ink); min-width: 16rem; }
+.filter p { margin: 0.4rem 0 0; }
+.pager { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: baseline;
+  margin: 1rem 0; font-size: 0.92rem; }
+.pager strong { padding: 0 0.2rem; }
+.years { display: flex; flex-wrap: wrap; gap: 0.4rem 0.8rem; margin: 0 0 1.2rem;
+  padding: 0; list-style: none; font-size: 0.92rem; }
 td .note { font-size: 0.8rem; }
 .stage { border-left: 3px solid var(--rule); padding: 0.2rem 0 0.2rem 1rem; margin: 0 0 1.2rem; }
 .stage h3 { margin: 0 0 0.2rem; font-size: 1rem; }

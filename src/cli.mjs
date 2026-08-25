@@ -397,6 +397,28 @@ switch (cmd) {
     await write('office-access.json', officeAccess.slice(0, 300).map((o, i) => (i < 150 ? o
       : { ...o, people: o.people.slice(0, 10), recent_meetings: [] })));
 
+    // The full archive, one file per office, for the offices that hold most of
+    // the record. 581,694 rows cannot all become HTML — the top 50 offices are
+    // 87% of every meeting, and the site says plainly where the line is drawn.
+    const ARCHIVE_OFFICES = Number(flag('archive-offices', '50'));
+    const slugFor = (k) => String(k).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80);
+    const archived = [];
+    for (const o of officeAccess.slice(0, ARCHIVE_OFFICES)) {
+      const agg = officeAgg.get(o.office_key);
+      const meetings = [...agg.meetings.values()]
+        .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+      await write(`office-meetings/${slugFor(o.office_key)}.json`, {
+        office_key: o.office_key, label: o.label, meetings,
+      });
+      archived.push({ office_key: o.office_key, slug: slugFor(o.office_key), meetings: meetings.length });
+    }
+    await write('office-archive-index.json', {
+      archived_offices: archived.length,
+      archived_meetings: archived.reduce((a, b) => a + b.meetings, 0),
+      total_offices: officeAccess.length,
+      offices: archived,
+    });
+
     const report = summarize(results);
     // Offices get their own coverage report: 'which chairs did we fail to
     // recognize' is a different question from 'which people did we fail to

@@ -8,7 +8,7 @@
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { STRINGS, LANGS, UNTRANSLATED } from './strings.mjs';
-import { layout, esc, slug, num, pct, date, CSS } from './render.mjs';
+import { layout, esc, slug, num, pct, date, CSS, filterBox, pager } from './render.mjs';
 import { meetingsOverTime, lagHistogram, yearlySparkline, stageReachedWhileUnpublished, stageName } from './charts.mjs';
 
 const read = async (dir, name) => {
@@ -100,7 +100,7 @@ function officesIndex({ lang, t, offices, generated }) {
   });
 }
 
-function officePage({ lang, t, office, holdings, generated }) {
+function officePage({ lang, t, office, holdings, archive, generated }) {
   // Who was on the receiving end, with the position the lobbyist filed. A
   // person the resolver could not match to a sitting member is shown anyway
   // and labelled as unmatched — most of them are public servants, who are
@@ -161,6 +161,11 @@ ${people ? `<h2>${esc(t.people_title)}</h2>
   ${people}
 </table>` : ''}
 
+${archive ? `<h2>${esc(t.all_meetings)}</h2>
+<p class="note">${esc(t.archive_note)}</p>
+<ul class="years">${archive.years.map((y) => `<li><a href="${slug(office.office_key)}--${y}.html">${esc(y)}</a> <span class="note">${num(archive.byYear.get(y).length, lang)} ${esc(t.office_meetings)}</span></li>`).join('')}</ul>`
+  : `<p class="note">${esc(t.archive_partial)}</p>`}
+
 ${meetings ? `<h2>${esc(t.meetings_title)}</h2>
 <p class="note">${esc(t.meetings_note)}</p>
 <table>
@@ -169,6 +174,57 @@ ${meetings ? `<h2>${esc(t.meetings_title)}</h2>
   ${meetings}
 </table>` : ''}
 <p class="note"><a href="index.html">← ${esc(t.back)}</a></p>`,
+  });
+}
+
+/** One row of the meeting record, used by every table that lists meetings. */
+function meetingRow({ t, m }) {
+  return `<tr>
+    <td class="n">${date(m.date)}</td>
+    <td class="n">${date(m.posted_date)}</td>
+    <td>${esc(m.client || '—')}${m.registrant ? `<div class="note">${esc(t.meeting_lobbyist)}: ${esc(m.registrant)}</div>` : ''}</td>
+    <td>${(m.officials || []).map((o) => `<div>${esc(o.name)}${o.title ? `<span class="note"> — ${esc(o.title)}</span>` : ''}</div>`).join('') || '—'}</td>
+  </tr>`;
+}
+
+/**
+ * One page of an office's meeting archive: a single year, cut into pages.
+ * Year first because that is the filter people actually want, and because it
+ * keeps each file small enough to open on a phone.
+ */
+function officeMeetingsPage({ lang, t, office, year, years, rows, page, pages, total, from, generated }) {
+  const tableId = 'meetings';
+  const href = (p) => `${slug(office.office_key)}--${year}${p > 1 ? `-p${p}` : ''}.html`;
+  const yearNav = `<ul class="years">${years.map((y) => (String(y) === String(year)
+    ? `<li><strong>${esc(y)}</strong></li>`
+    : `<li><a href="${slug(office.office_key)}--${y}.html">${esc(y)}</a></li>`)).join('')}</ul>`;
+
+  return layout({
+    lang, t, generated, depth: 2, title: `${office.label} — ${year}`,
+    body: `<h1>${esc(office.label)}</h1>
+<p class="lede">${esc(t.all_meetings)} · ${esc(year)} · ${num(total, lang)} ${esc(t.office_meetings)}${pages > 1
+  ? ` · ${esc(t.page_of.replace('{page}', num(page, lang)).replace('{pages}', num(pages, lang)))} (${esc(t.showing_range
+      .replace('{from}', num(from + 1, lang)).replace('{to}', num(from + rows.length, lang)))})`
+  : ''}</p>
+<p class="note"><a href="${slug(office.office_key)}.html">← ${esc(office.label)}</a></p>
+
+<h2>${esc(t.browse_by_year)}</h2>
+${yearNav}
+
+${filterBox({ t, targetId: tableId })}
+${pager({ t, pages, current: page, href })}
+
+<table id="${tableId}">
+  <thead>
+    <tr><th class="n">${esc(t.bill_date)}</th><th class="n">${esc(t.chart_published)}</th>
+        <th>${esc(t.meeting_who_asked)}</th><th>${esc(t.meeting_met)}</th></tr>
+  </thead>
+  <tbody>
+    ${rows.map((m) => meetingRow({ t, m })).join('\n')}
+  </tbody>
+</table>
+
+${pager({ t, pages, current: page, href })}`,
   });
 }
 
@@ -302,7 +358,7 @@ précise, à un projet de loi.</p>
   return layout({ lang, t, generated, depth: 1, title: t.method_title, body });
 }
 
-export async function buildSite({ dataDir = 'data/out', outDir = 'site', maxOffices = 150 } = {}) {
+export async function buildSite({ dataDir = 'data/out', outDir = 'site', maxOffices = 150, perPage = 500 } = {}) {
   const ratio = await read(dataDir, 'ratio-report.json');
   const resolution = await read(dataDir, 'resolution-report.json');
   const offices = (await read(dataDir, 'office-access.json')) || [];
@@ -324,6 +380,23 @@ export async function buildSite({ dataDir = 'data/out', outDir = 'site', maxOffi
     holdingsByOffice.get(h.office_key).push(h);
   }
 
+  // The full archive, one file per office, written by `resolve`. Its absence
+  // is normal — a run without it still produces the whole site, minus the
+  // deep pages.
+  const archiveIndex = await read(dataDir, 'office-archive-index.json');
+  const archives = new Map();
+  for (const entry of archiveIndex?.offices || []) {
+    const file = await read(`${dataDir}/office-meetings`, `${entry.slug}.json`);
+    if (!file?.meetings?.length) continue;
+    const byYear = new Map();
+    for (const m of file.meetings) {
+      const y = String(m.date || '').slice(0, 4) || 'undated';
+      if (!byYear.has(y)) byYear.set(y, []);
+      byYear.get(y).push(m);
+    }
+    archives.set(entry.office_key, { byYear, years: [...byYear.keys()].sort().reverse() });
+  }
+
   const shown = offices.slice(0, maxOffices);
   let pages = 0;
   await put(`${outDir}/style.css`, CSS);
@@ -338,8 +411,23 @@ export async function buildSite({ dataDir = 'data/out', outDir = 'site', maxOffi
     for (const office of shown) {
       const holdings = (holdingsByOffice.get(office.office_key) || [])
         .sort((a, b) => String(a.start_date).localeCompare(String(b.start_date)));
-      await put(`${outDir}/${lang}/offices/${slug(office.office_key)}.html`, officePage({ lang, t, office, holdings, generated }));
+      const archive = archives.get(office.office_key);
+      await put(`${outDir}/${lang}/offices/${slug(office.office_key)}.html`,
+        officePage({ lang, t, office, holdings, archive, generated }));
       pages++;
+
+      // Year pages, each cut into pages of `perPage`.
+      for (const year of archive?.years || []) {
+        const all = archive.byYear.get(year);
+        const total = Math.max(Math.ceil(all.length / perPage), 1);
+        for (let p = 1; p <= total; p++) {
+          const rows = all.slice((p - 1) * perPage, p * perPage);
+          await put(`${outDir}/${lang}/offices/${slug(office.office_key)}--${year}${p > 1 ? `-p${p}` : ''}.html`,
+            officeMeetingsPage({ lang, t, office, year, years: archive.years, rows, page: p,
+              pages: total, total: all.length, from: (p - 1) * perPage, generated }));
+          pages++;
+        }
+      }
     }
 
     await put(`${outDir}/${lang}/bills/index.html`, billsIndex({ lang, t, timelines, citations, generated }));

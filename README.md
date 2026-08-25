@@ -50,14 +50,20 @@ Built by the same run that processes the data, published to GitHub Pages:
 
 - **Home** — what lobbying is, in plain words, then the four numbers.
 - **Offices** — every part of government ranked by meetings logged, with who
-  was named in each and when.
+  was named in each and when. Each of the largest offices also carries its
+  **whole meeting archive**, one page per year, cut into pages of 500 rows,
+  with a filter box that narrows the page by person, job title, organisation
+  or lobbyist. The top 50 offices hold 87% of the attributed record; the long
+  tail keeps its most recent meetings and says on the page that it does.
 - **Bills** — for each bill registrants named: meetings per month, split by
   whether the public could see them yet when the bill took its next step.
 - **Method** — what the record cannot tell you, before what it can.
 
 English and French are separate trees, generated together. The pages are static
-HTML with inline SVG: no framework, no build step, no runtime JavaScript, and
-no dependencies at all — `package.json` has none.
+HTML with inline SVG: no framework, no build step, and no dependencies at all
+— `package.json` has none. The only JavaScript on the site is the filter box,
+and it is pure enhancement: every row is in the HTML, and the script does
+nothing but hide the ones that do not match what you typed.
 
 ## How it runs
 
@@ -102,7 +108,7 @@ can reach.
 ## Commands
 
 ```bash
-npm test                 # 111 unit tests, no network
+npm test                 # 122 unit tests, no network
 
 npm run fetch:lobbying   # OCL bulk files via the Open Government catalogue
 npm run probe            # real column headers, and the file's encoding, vs. what config expects
@@ -182,6 +188,7 @@ src/match/office.mjs             office resolution against a dated roster
 src/match/derive-offices.mjs     the roster, derived from the filings
 src/match/bill-refs.mjs          citation extraction, session scoping
 src/match/timeline.mjs           pre-stage access windows + filing lag
+data/out/office-meetings/        per-office meeting archives, written by `resolve`
 src/site/                        the static site: strings (EN/FR), charts, pages
 ```
 

@@ -216,3 +216,108 @@ test('a bill page shows every meeting, with the lobbyist and each official met',
   assert.match(p, /Lobbyist who filed it/);
   assert.match(p, /Nguyen, Mai<span class="note"> — Minister of Finance/);
 });
+
+// --- the full meeting archive: year pages, pagination, name filter ---------
+
+test('the office summary links into the archive, one entry per year', async () => {
+  const p = await page('en/offices/finance-canada-fin.html');
+  assert.match(p, /All meetings/);
+  assert.match(p, /finance-canada-fin--2024\.html/);
+  assert.match(p, /finance-canada-fin--2023\.html/);
+  // Newest year first: someone opening the page wants this year, not 2008.
+  assert.ok(p.indexOf('--2024.html') < p.indexOf('--2023.html'));
+});
+
+test('an office with no archive says so rather than pretending to be complete', async () => {
+  // The second fixture office is not in office-archive-index.json, exactly as
+  // the long tail of real offices is not.
+  const p = await page('en/offices/health-canada-hc.html');
+  assert.match(p, /keeps its most recent meetings only/);
+  assert.doesNotMatch(p, /health-canada-hc--20\d\d\.html/);
+});
+
+test('a year page carries the year navigation, the filter and the meetings', async () => {
+  const p = await page('en/offices/finance-canada-fin--2024.html');
+  assert.match(p, /Finance Canada \(FIN\)/);
+  assert.match(p, /2024/);
+  assert.match(p, /Filter by name/);
+  assert.match(p, /Maple Leaf Foods/);
+  assert.match(p, /Tremblay, Chantal/);
+  // A link back to the office, and across to the other year.
+  assert.match(p, /href="finance-canada-fin\.html"/);
+  assert.match(p, /href="finance-canada-fin--2023\.html"/);
+});
+
+test('the filter works without JavaScript having run: the rows are in the HTML', async () => {
+  // Progressive enhancement. If the script never loads the reader still has
+  // every meeting; the script only hides rows it is told to hide.
+  const p = await page('en/offices/finance-canada-fin--2024.html');
+  const table = p.slice(p.indexOf('<table id="meetings">'), p.indexOf('</table>'));
+  assert.match(table, /Maple Leaf Foods/);
+  assert.match(table, /Tremblay, Chantal/);
+  const script = p.slice(p.indexOf('<script>'), p.indexOf('<\/script>'));
+  assert.doesNotMatch(script, /fetch\(|XMLHttpRequest|innerHTML/);
+  assert.match(script, /hidden = /);
+});
+
+test('pagination keeps every meeting exactly once across the pages', async () => {
+  // Built small on purpose: seven 2024 meetings at three per page is three
+  // pages, including a short last one.
+  const out = await mkdtemp(join(tmpdir(), 'site-paged-'));
+  try {
+    await buildSite({ dataDir, outDir: out, perPage: 3 });
+    const read = (p) => readFile(join(out, p), 'utf8');
+    const ids = [];
+    for (const f of ['finance-canada-fin--2024.html',
+                     'finance-canada-fin--2024-p2.html',
+                     'finance-canada-fin--2024-p3.html']) {
+      const html = await read(`en/offices/${f}`);
+      for (const m of html.matchAll(/Canadian Bankers Association (\d)|Maple Leaf Foods/g)) ids.push(m[0]);
+    }
+    assert.equal(ids.length, 7, 'seven meetings, no page dropping or repeating rows');
+    assert.equal(new Set(ids).size, 7, 'no meeting appears on two pages');
+
+    // A fourth page must not exist, and page one must not offer a previous.
+    await assert.rejects(() => read('en/offices/finance-canada-fin--2024-p4.html'));
+    const first = await read('en/offices/finance-canada-fin--2024.html');
+    assert.doesNotMatch(first, /Previous/);
+    assert.match(first, /Next/);
+    assert.match(first, /finance-canada-fin--2024-p2\.html/);
+
+    const last = await read('en/offices/finance-canada-fin--2024-p3.html');
+    assert.match(last, /Previous/);
+    assert.doesNotMatch(last, /Next/);
+
+    // The year with fewer meetings than a page gets no pager at all.
+    const short = await read('en/offices/finance-canada-fin--2023.html');
+    assert.doesNotMatch(short, /Next|Previous/);
+  } finally {
+    await rm(out, { recursive: true, force: true });
+  }
+});
+
+test('the French archive is French, down to the pagination', async () => {
+  const p = await page('fr/offices/finance-canada-fin--2024.html');
+  assert.match(p, /Maple Leaf Foods/);
+  assert.match(p, /Filtrer par nom/);
+  assert.match(p, /Parcourir par ann\u00e9e|Parcourir par année/);
+  assert.doesNotMatch(p, /Filter by name/);
+});
+
+test('a paged year says how many meetings the year holds, not how many this page shows', async () => {
+  // The first version printed '3 meetings' on page 1 of 3 — a reader would
+  // have believed the year held three.
+  const out = await mkdtemp(join(tmpdir(), 'site-count-'));
+  try {
+    await buildSite({ dataDir, outDir: out, perPage: 3 });
+    const p = await readFile(join(out, 'en/offices/finance-canada-fin--2024.html'), 'utf8');
+    const lede = p.slice(p.indexOf('<p class="lede">'), p.indexOf('</p>', p.indexOf('<p class="lede">')));
+    assert.match(lede, /7 meetings/);
+    assert.match(lede, /Page 1 of 3/);
+    assert.match(lede, /showing 1–3/);
+    const last = await readFile(join(out, 'en/offices/finance-canada-fin--2024-p3.html'), 'utf8');
+    assert.match(last, /showing 7–7/);
+  } finally {
+    await rm(out, { recursive: true, force: true });
+  }
+});

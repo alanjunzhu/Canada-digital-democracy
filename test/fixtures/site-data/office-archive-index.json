@@ -1,0 +1,12 @@
+{
+  "archived_offices": 1,
+  "archived_meetings": 10,
+  "total_offices": 2,
+  "offices": [
+    {
+      "office_key": "finance canada fin",
+      "slug": "finance-canada-fin",
+      "meetings": 10
+    }
+  ]
+}

@@ -234,3 +234,24 @@ The three items that used to sit here are done, and the record of how they went
 is above: the UI exists and is bilingual from the first page, and the coverage
 number that was supposed to decide what it was for did exactly that — 26.4%
 naming an MP is why the site is organised around offices rather than members.
+
+## The meeting archive (this change)
+
+581,694 official-rows reduce to 399,936 meetings that resolve to an office.
+That will not fit in HTML, so the archive is written where the record actually
+is: the top 50 offices hold 349,092 of those meetings — 87% — and get every
+one of them, one JSON file per office (`data/out/office-meetings/<slug>.json`)
+and one HTML page per year, cut at 500 rows. Everything below that keeps the
+recent window it already had, and the page says so rather than looking
+complete.
+
+Two things the rendered page caught that the tests did not:
+
+- Page 1 of 3 printed "3 meetings" — the rows on the page, which a reader
+  would have read as the size of the year. It now prints the year's total,
+  the page number, and the row range.
+- The filter's placeholder repeated its own label. It shows an example now.
+
+The filter is deliberately dumb: substring match over `row.textContent`, no
+index, no fetch. 500 rows is small enough that it is instant, and it means a
+reader with JavaScript off loses nothing but the narrowing.

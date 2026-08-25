@@ -74,5 +74,53 @@
         ]
       }
     ]
+  },
+  {
+    "office_key": "health canada hc",
+    "label": "Health Canada (HC)",
+    "rows": 4,
+    "communications": 4,
+    "first_date": "2019-02-04",
+    "last_date": "2024-09-30",
+    "median_filing_lag_days": 31,
+    "top_clients": [
+      {
+        "client": "Canadian Medical Association",
+        "n": 3
+      }
+    ],
+    "people": [
+      {
+        "name": "Okafor, Ada",
+        "title": "Assistant Deputy Minister",
+        "branch": "Health Products",
+        "person_id": null,
+        "status": "unresolved",
+        "meetings": 4,
+        "first_date": "2019-02-04",
+        "last_date": "2024-09-30",
+        "top_clients": [
+          {
+            "client": "Canadian Medical Association",
+            "n": 3
+          }
+        ]
+      }
+    ],
+    "recent_meetings": [
+      {
+        "communication_id": "9500",
+        "date": "2024-09-30",
+        "posted_date": "2024-10-28",
+        "client": "Canadian Medical Association",
+        "registrant": "Doe, John",
+        "officials": [
+          {
+            "name": "Okafor, Ada",
+            "title": "Assistant Deputy Minister"
+          }
+        ]
+      }
+    ]
   }
 ]
